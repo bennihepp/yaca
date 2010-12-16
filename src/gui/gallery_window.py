@@ -304,15 +304,15 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
         if focused:
 
             pen = QPen( QColor( 0, 255, 255 ) )
-            pen.setWidthf( 2.0 )
+            pen.setWidthF( 2.0 )
             painter.setPen( pen )
 
             left -= self.PIXMAP_SPACING / 2
             top -= self.PIXMAP_SPACING / 2
             width = self.pixmap_width + self.PIXMAP_SPACING
             height = self.pixmap_height + self.PIXMAP_SPACING
-            xradius = width / 2
-            yradius = height / 2
+            xradius = width / 20
+            yradius = height / 20
 
             #painter.drawRect( QRect( left, top, left + width, top + height ) )
             painter.drawRoundedRect( left, top, left + width, top + height, xradius, yradius )
@@ -364,14 +364,16 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
                 index = r * self.columns + c
 
-                pixmap = self.pixmaps[ index ]
-                if pixmap != None:
-                    self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
+                if index < len( self.pixmaps ):
 
-                if self.pixmap_texts and len( self.pixmap_texts ) > index:
-                    texts = self.pixmap_texts[ index ]
-                    if texts != None:
-                        self.draw_texts( p, r, c, texts )
+                    pixmap = self.pixmaps[ index ]
+                    if pixmap != None:
+                        self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
+
+                    if self.pixmap_texts and len( self.pixmap_texts ) > index:
+                        texts = self.pixmap_texts[ index ]
+                        if texts != None:
+                            self.draw_texts( p, r, c, texts )
 
         p.end()
 
@@ -504,7 +506,7 @@ class GalleryWindow(QWidget):
                     focus_index = len( self.pixmaps )
 
                 cacheId = int( self.selectionIds[ pixmapId ] )
-                if cacheId in self.imageCache:
+                if cacheId in oldCacheIds:
                     oldCacheIds.remove( cacheId )
                 else:
                     self.imageCache[ cacheId ] = {}
@@ -525,6 +527,10 @@ class GalleryWindow(QWidget):
 
                 if pix:
                     self.pixmaps.append(pix)
+
+                else:
+                    raise Exception( 'Error when creating pixmap' )
+
                     #self.widgets[i-start_i].setText('Label #%d' % (i))
                     #self.widgets[i-start_i].setPixmap(pix)
                     #if pixmapId == self.focus_i:
@@ -551,7 +557,7 @@ class GalleryWindow(QWidget):
                         if self.singleImage:
                             text = '%s=%s' % ( featureName, str( self.featureFactory.createFeatureText( self.selectionIds[ pixmapId ], feature ) ) )
                         else:
-                            text = str( self.featureFactory( self.selectionIds[ pixmapId ], feature ) )
+                            text = str( self.featureFactory.createFeatureText( self.selectionIds[ pixmapId ], feature ) )
 
                         texts.append( text )
 
@@ -674,6 +680,7 @@ class GalleryWindow(QWidget):
         self.progressbar.setValue( self.progressbar.maximum() )
 
         if len( pixmap_texts ) > 0:
+            print 'len(self.pixmaps): %d' % len( self.pixmaps )
             self.pixmaparea.set_pixmaps_and_texts( self.rows, self.columns, self.pixmaps, focus_index, pixmap_texts )
         else:
             self.pixmaparea.set_pixmaps( self.rows, self.columns, self.pixmaps, focus_index )

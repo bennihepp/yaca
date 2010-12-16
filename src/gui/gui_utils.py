@@ -282,6 +282,7 @@ class ImagePixmapFactory(object):
             if not rgb_channels_changed:
 
                 merged_img = imageCache[ cacheId ][ 'merged_image' ]
+                mode = imageCache[ cacheId ][ 'mode' ]
 
             else:
 
@@ -289,9 +290,11 @@ class ImagePixmapFactory(object):
                     mode = 'RGB'
                     merged_img = Image.merge( mode, imgs[:3] )
                 else:
+                    mode = 'L'
                     merged_img = imgs[0]
 
                 imageCache[ cacheId ][ 'merged_image' ] = merged_img
+                imageCache[ cacheId ][ 'mode' ] = mode
 
             img = merged_img
 

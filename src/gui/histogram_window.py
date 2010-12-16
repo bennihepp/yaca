@@ -37,11 +37,12 @@ class HistogramWindow(QWidget):
         self.on_draw()
 
 
-    def draw_histogram(self, values, bins, bin_labels=None):
+    def draw_histogram(self, values, bins, bin_labels=None, bin_rescale=None):
         self.plot_type = self.PLOT_TYPE_HISTOGRAM
         self.values = values
         self.bins = bins
         self.bin_labels = bin_labels
+        self.bin_rescale = bin_rescale
         self.on_draw()
 
 
@@ -63,6 +64,10 @@ class HistogramWindow(QWidget):
                 tmp = numpy.zeros( ( self.bins, ), int )
                 for v in x:
                     tmp[ v ] += numpy.sum( self.values[ : ] == v )
+
+                if self.bin_rescale != None:
+                    tmp = tmp * self.bin_rescale
+
                 self.axes.bar( x, tmp, facecolor='yellow', alpha=0.75, align='center' )
                 self.axes.set_xticks( x )
                 self.axes.set_xticklabels( self.bin_labels )
@@ -74,7 +79,7 @@ class HistogramWindow(QWidget):
 
         self.canvas.draw()
 
-    def on_draw_bar(self):
+    def on_draw_barplot(self):
         # Redraws the figure
 
         self.axes.clear()
@@ -85,7 +90,7 @@ class HistogramWindow(QWidget):
             if x == None:
                 x = numpy.arange( self.values.shape[0] )
 
-            self.axes.bar( x, values, facecolor='red', alpha=0.75, align='mid' )
+            self.axes.bar( x, self.values, facecolor='red', alpha=0.75, align='center' )
             if self.x_labels != None:
                 self.axes.set_xticks( x )
                 self.axes.set_xticklabels( self.x_labels )

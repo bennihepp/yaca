@@ -304,12 +304,17 @@ class ResultsWindow(QWidget):
             if self.histogram == None:
                 self.histogram = HistogramWindow()
             bin_labels = None
+            bin_rescale = None
             if feature_id == self.adc.objTreatmentFeatureId:
                 if bins == len( self.adc.treatments ):
                     bin_labels = []
+                    bin_rescale = numpy.empty( ( bins, ) )
                     for tr in self.adc.treatments:
                         bin_labels.append( tr.name )
-            self.histogram.draw_histogram( values, bins, bin_labels )
+                        tr_mask = self.features[ : , self.adc.objTreatmentFeatureId ] == tr.rowId
+                        tr_obj_count = numpy.sum( tr_mask )
+                        bin_rescale[ tr.rowId ] = 100.0 / tr_obj_count
+            self.histogram.draw_histogram( values, bins, bin_labels, bin_rescale )
             self.histogram.show()
 
 
@@ -327,13 +332,42 @@ class ResultsWindow(QWidget):
         self.statusBar.showMessage( 'Running clustering...' )
 
         self.pipeline.run_pipeline( self.supercluster_index )
-        self.pipeline.run_clustering( self.number_of_clusters )
+
+        #self.pipeline.run_clustering( self.number_of_clusters )
+
+        calculate_silhouette = bool( self.findNumberOfClusters_checkBox.isChecked() )
+
+        if calculate_silhouette:
+            n_offset = 2
+        else:
+            n_offset = self.number_of_clusters
+
+        s = []
+        p = []
+        for n in xrange( n_offset, self.number_of_clusters + 1 ):
+            print 'clustering with %d clusters...' % n
+            self.pipeline.run_clustering( n, calculate_silhouette )
+            partition = self.pipeline.nonControlPartition
+            p.append( partition )
+            if calculate_silhouette:
+                silhouette = self.pipeline.nonControlSilhouette
+                s.append( numpy.mean( silhouette ) )
+                print s[ -1 ]
+
+        if calculate_silhouette:
+            s = numpy.array( s )
+            n = numpy.argmax( s ) + n_offset
+        else:
+            n = 0
+
+        self.partition = p[ n ]
+        self.number_of_clusters = n + n_offset
 
         self.features = self.pipeline.nonControlFeatures
         self.mahalFeatures = self.pipeline.nonControlTransformedFeatures
         self.featureNames = self.pipeline.featureNames
-        self.partition = self.pipeline.nonControlPartition
-        self.number_of_clusters = self.pipeline.nonControlClusters.shape[0]
+        #self.partition = self.pipeline.nonControlPartition
+        #self.number_of_clusters = self.pipeline.nonControlClusters.shape[0]
 
         self.statusBar.showMessage( 'Finished clustering!', 2000 )
 
@@ -349,15 +383,16 @@ class ResultsWindow(QWidget):
 
         self.group_combo.setCurrentIndex( -1 )
 
-        if self.group_policy == self.GROUP_POLICY_CLUSTERING:
-            self.on_group_policy_changed( self.GROUP_POLICY_CLUSTERING )
+        self.on_group_policy_changed( self.GROUP_POLICY_CLUSTERING )
 
-        self.barplot = HistogramWindow()
-        silhouette = self.pipeline.nonControlSilhouette
-        print silhouette
-        print silhouette.shape
-        self.barplot.draw_barplot( silhouette )
-        self.barplot.show()
+        if calculate_silhouette:
+            self.barplot = HistogramWindow()
+            #silhouette = self.pipeline.nonControlSilhouette
+            #print silhouette
+            #print silhouette.shape
+            #self.barplot.draw_barplot( silhouette )
+            self.barplot.draw_barplot( s )
+            self.barplot.show()
 
 
     def on_group_policy_changed(self, group_policy):
@@ -532,11 +567,15 @@ class ResultsWindow(QWidget):
         cluster_button = QPushButton( 'Run clustering' )
         self.connect( cluster_button, SIGNAL('clicked()'), self.on_cluster_button )
 
+        self.findNumberOfClusters_checkBox = QCheckBox( 'Determine number of clusters' )
+        self.findNumberOfClusters_checkBox.setChecked( False )
+
         hbox = QHBoxLayout()
         hbox.addWidget( QLabel( 'Number of clusters:' ) )
         hbox.addWidget( self.cluster_spinbox, 1 )
         hbox.addWidget( QLabel( 'SuperCluster:' ) )
         hbox.addWidget( self.cluster_combo, 2 )
+        hbox.addWidget( self.findNumberOfClusters_checkBox )
         hbox.addWidget( cluster_button, 1 )
         groupBox4 = QGroupBox( 'Clustering' )
         groupBox4.setLayout( hbox )
