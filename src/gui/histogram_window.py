@@ -29,20 +29,22 @@ class HistogramWindow(QWidget):
         self.on_draw()
 
 
-    def draw_barplot(self, values, x=None, x_labels=None):
+    def draw_barplot(self, values, x=None, x_labels=None, **kwargs):
         self.plot_type = self.PLOT_TYPE_BAR
         self.values = values
         self.x = x
         self.x_labels = x_labels
+        self.kwargs = kwargs
         self.on_draw()
 
 
-    def draw_histogram(self, values, bins, bin_labels=None, bin_rescale=None):
+    def draw_histogram(self, values, bins, bin_labels=None, bin_rescale=None, **kwargs):
         self.plot_type = self.PLOT_TYPE_HISTOGRAM
         self.values = values
         self.bins = bins
         self.bin_labels = bin_labels
         self.bin_rescale = bin_rescale
+        self.kwargs = kwargs
         self.on_draw()
 
 
@@ -68,12 +70,12 @@ class HistogramWindow(QWidget):
                 if self.bin_rescale != None:
                     tmp = tmp * self.bin_rescale
 
-                self.axes.bar( x, tmp, facecolor='yellow', alpha=0.75, align='center' )
+                self.axes.bar( x, tmp, facecolor='yellow', alpha=0.75, align='center', **self.kwargs )
                 self.axes.set_xticks( x )
                 self.axes.set_xticklabels( self.bin_labels )
 
             else:
-                self.axes.hist( self.values, self.bins, facecolor='green', alpha=0.75, align='center' )
+                self.axes.hist( self.values, self.bins, facecolor='green', alpha=0.75, align='center', **self.kwargs )
 
             self.axes.grid( True )
 
@@ -90,7 +92,7 @@ class HistogramWindow(QWidget):
             if x == None:
                 x = numpy.arange( self.values.shape[0] )
 
-            self.axes.bar( x, self.values, facecolor='red', alpha=0.75, align='center' )
+            self.axes.bar( x, self.values, facecolor='red', alpha=0.75, align='center', **self.kwargs )
             if self.x_labels != None:
                 self.axes.set_xticks( x )
                 self.axes.set_xticklabels( self.x_labels )

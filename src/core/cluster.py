@@ -9,7 +9,7 @@ CLUSTER_METHOD_KMEANS = 0
 CLUSTER_METHOD_KMEDIANS = 1
 CLUSTER_METHOD_KMEDOIDS = 2
 
-def cluster(method, points, k, minkowski_p=2, callback=None):
+def cluster(method, points, k, minkowski_p=2, calculate_silhouette=False, callback=None):
     if method == CLUSTER_METHOD_KMEANS:
         p,c = cluster_kmeans( points, k, minkowski_p, 0, callback )
     elif method == CLUSTER_METHOD_KMEDIANS:
@@ -19,7 +19,10 @@ def cluster(method, points, k, minkowski_p=2, callback=None):
     else:
         raise Exception( 'Unknown clustering method' )
 
-    s = silhouette( points, p, c, minkowski_p )
+    if calculate_silhouette:
+        s = silhouette( points, p, c, minkowski_p )
+    else:
+        s = None
 
     return p,c,s
 
@@ -643,6 +646,8 @@ def cluster_kmedoids(points, k, minkowski_p=2, callback=None):
 
 def silhouette(points, partition, clusters, minkowski_p=2):
 
+    print 'calculating silhouette...'
+
     s = numpy.empty( ( points.shape[0], ) )
 
     for i in xrange( points.shape[0] ):
@@ -674,7 +679,84 @@ def silhouette(points, partition, clusters, minkowski_p=2):
         s[ i ] = min_avg_cluster_dist - avg_cluster_dist[ partition[ i ] ]
         s[ i ] /= max( min_avg_cluster_dist, avg_cluster_dist[ partition[ i ] ] )
 
+    print 'finished calculating silhouette'
+
     return s
 
 
+def sample_reference_datasets(points, B):
+    #print 'sampling reference datasets...'
+    low = numpy.min( points, 0 )
+    high = numpy.max( points, 0 )
+    references = []
+    for b in xrange( B ):
+        ref = numpy.empty( points.shape )
+        for i in xrange( points.shape[1] ):
+            ref[ : , i ] = numpy.random.uniform( low[ i ], high[ i ], points.shape[ 0 ] )
+        references.append( ref )
+    #print 'finished sampling reference datasets'
+    return references
 
+def within_cluster_distance(points, partition, clusters, minkowski_p=2, cluster_callback=None):
+
+    if minkowski_p != 2:
+        raise Exception( 'Not implemented yet' )
+
+    # THIS IS WRONG FOR NON-EUCLIDEAN METRICS!!!
+
+    #print 'calculating within cluster distance...'
+
+    c = numpy.empty( ( points.shape[0], clusters.shape[1] ) )
+    cluster_size = numpy.empty( ( points.shape[0], ) )
+
+    for i in xrange( clusters.shape[0] ):
+        mask = partition[ : ] == i
+        cluster_size[ mask ] = numpy.sum( mask )
+        c[ mask ] = clusters[ i ]
+
+    W = numpy.sum( numpy.sum( ( points - c )**2, 1 ) / cluster_size, 0 )
+
+    #print 'finished calculating within cluster distance'
+
+    return W
+
+def gap_statistic(points, num_of_clusters, B=5, cluster_callback=None):
+    minkowski_p = 2
+    references = sample_reference_datasets(points, B)
+
+    W = numpy.empty( B + 1 )
+    all = [points] + references
+    for i in xrange( len( all ) ):
+        dataset = all[ i ]
+        partition,clusters,silhouette = cluster(
+                CLUSTER_METHOD_KMEANS,
+                dataset,
+                num_of_clusters,
+                minkowski_p,
+                False,
+                cluster_callback
+        )
+        W[ i ] = within_cluster_distance( dataset, partition, clusters, minkowski_p, cluster_callback )
+    W = numpy.log( W )
+    gap = numpy.sum( W[ 1 : ] ) / B - W[ 0 ]
+    stddev = numpy.std( W[ 1 : ] )
+    sk = stddev * numpy.sqrt( 1 + 1/float(B) )
+    return gap, sk
+
+def determine_num_of_clusters(points, max_num_of_clusters, B=5, cluster_callback=None):
+    gaps = numpy.empty( ( max_num_of_clusters, ) )
+    sk = numpy.empty( gaps.shape )
+    for num_of_clusters in xrange( 1, max_num_of_clusters + 1 ):
+        print 'calculating gap statistic for %d clusters...' % num_of_clusters
+        gap, stddev = gap_statistic( points, num_of_clusters, B, cluster_callback )
+        gaps[ num_of_clusters - 1 ] = gap
+        sk[ num_of_clusters - 1 ] = stddev
+    best_num_of_clusters = -1
+    for num_of_clusters in xrange( 1, max_num_of_clusters ):
+        k = num_of_clusters - 1
+        print 'k=%d, gaps[k]=%f, sk[k]=%f, gaps[k+1]=%f, sk[k+1]=%f' % (k, gaps[k], sk[k], gaps[k+1], sk[k+1])
+        if gaps[ k ] >= gaps[ k + 1 ] - sk[ k + 1 ]:
+            best_num_of_clusters = num_of_clusters
+            break
+
+    return best_num_of_clusters, gaps, sk

@@ -10,7 +10,7 @@ import time
 
 
 
-TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%s-%s.tiff'
+TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%s-%s-%s.tiff'
 
 
 
@@ -294,6 +294,7 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
         self.drawTexture( rect, texture )"""
 
     def draw_pixmap(self, painter, row, column, pixmap, focused=False):
+
         left = self.PIXMAP_SPACING + column * ( self.PIXMAP_SPACING + self.pixmap_width )
         top =  self.PIXMAP_SPACING +    row * ( self.PIXMAP_SPACING + self.pixmap_height )
 
@@ -303,22 +304,23 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
         if focused:
 
+            penWidthF = 2.0
             pen = QPen( QColor( 0, 255, 255 ) )
-            pen.setWidthF( 2.0 )
+            pen.setWidthF( penWidthF )
             painter.setPen( pen )
 
-            left -= self.PIXMAP_SPACING / 2
-            top -= self.PIXMAP_SPACING / 2
+            left -= self.PIXMAP_SPACING / 2 + penWidthF / 2
+            top -= self.PIXMAP_SPACING / 2 + penWidthF / 2
             width = self.pixmap_width + self.PIXMAP_SPACING
             height = self.pixmap_height + self.PIXMAP_SPACING
             xradius = width / 20
             yradius = height / 20
 
             #painter.drawRect( QRect( left, top, left + width, top + height ) )
-            painter.drawRoundedRect( left, top, left + width, top + height, xradius, yradius )
+            painter.drawRoundedRect( QRectF( left, top, left + width, top + height ), xradius, yradius )
 
     def draw_texts(self, painter, row, column, texts):
-        
+
         if len( texts ) > 0:
 
             painter.setPen( QColor( 255,255,255 ) )
@@ -329,20 +331,21 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
             width = self.pixmap_width
             height = self.pixmap_height
 
+            x = self.TEXT_HORIZONTAL_OFFSET
             y = self.TEXT_VERTICAL_OFFSET
 
             for text in texts:
 
                 rect = QRect(
-                    left,
+                    left + x,
                     top + y,
-                    width - left,
-                    height - top - y
+                    left + width,
+                    top + y + height
                 )
 
                 boundingRect = painter.boundingRect( rect, Qt.TextSingleLine | Qt.AlignLeft | Qt.AlignTop, text )
 
-                y = boundingRect.bottom() + self.TEXT_VERTICAL_SPACING
+                y += boundingRect.height() + self.TEXT_VERTICAL_SPACING
 
                 painter.drawText( boundingRect, Qt.TextSingleLine | Qt.AlignLeft | Qt.AlignTop, text )
 
@@ -519,7 +522,7 @@ class GalleryWindow(QWidget):
                                 self.pixmap_height,
                                 self.channelAdjustment,
                                 self.color,
-                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( time.time() ) ),
+                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) ),
                                 self.imageCache
                 )
 
@@ -680,7 +683,6 @@ class GalleryWindow(QWidget):
         self.progressbar.setValue( self.progressbar.maximum() )
 
         if len( pixmap_texts ) > 0:
-            print 'len(self.pixmaps): %d' % len( self.pixmaps )
             self.pixmaparea.set_pixmaps_and_texts( self.rows, self.columns, self.pixmaps, focus_index, pixmap_texts )
         else:
             self.pixmaparea.set_pixmaps( self.rows, self.columns, self.pixmaps, focus_index )
@@ -840,7 +842,7 @@ class GalleryWindow(QWidget):
             foundActive = False
             self.channelAdjustment = { channel : self.channelAdjustment[ channel ] }
             for ca in self.channelAdjusters:
-                if channel != ca.channelName:
+                if channel != ca.channelName and channel in 'RGB':
                     ca.setActive( False, False )
 
         if self.selectionIds != None:
@@ -856,11 +858,12 @@ class GalleryWindow(QWidget):
         self.color = bool( color )
         if not color:
             for ca in self.channelAdjusters:
-                if foundActive:
-                    ca.setActive( False, False )
-                elif ca.isActive():
-                    self.channelAdjustment = { ca.channelName : self.channelAdjustment[ ca.channelName ] }
-                    foundActive = True
+                if ca.channelName in 'RGB':
+                    if foundActive:
+                        ca.setActive( False, False )
+                    elif ca.isActive():
+                        self.channelAdjustment = { ca.channelName : self.channelAdjustment[ ca.channelName ] }
+                        foundActive = True
         if self.selectionIds != None:
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
@@ -946,11 +949,16 @@ class GalleryWindow(QWidget):
         channelWidgets = QWidget()
         channelWidgets.setLayout( vbox2 )
 
+        channelScrollArea = QScrollArea()
+        channelScrollArea.setMinimumWidth( channelWidgets.minimumSizeHint().width() )
+        #channelScrollArea.setHorizontalScrollBarPolicy( Qt.ScrollBarAlwaysOff )
+        channelScrollArea.setWidget( channelWidgets )
+
         featureSelector = GalleryFeatureSelector( self.featureDescription )
         self.connect( featureSelector, SIGNAL('selectedFeaturesChanged'), self.on_selected_features_changed )
 
         tabWidget = QTabWidget()
-        tabWidget.addTab( channelWidgets, 'Channels' )
+        tabWidget.addTab( channelScrollArea, 'Channels' )
         tabWidget.addTab( featureSelector, 'Features' )
 
         hsplitter = QSplitter()

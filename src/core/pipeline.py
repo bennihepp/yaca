@@ -24,6 +24,8 @@ utils.register_parameter( __name__, 'fermi_dirac_sim_sharpness', utils.PARAM_FLO
 
 utils.register_parameter( __name__, 'minkowski_p', utils.PARAM_INT, 'Parameter p for the Minkowski metric', 2, 1, None )
 
+utils.register_parameter( __name__, 'num_of_reference_datasets', utils.PARAM_INT, 'Number of reference datasets to sample for GAP statistics', 5, 1, None )
+
 
 
 """PipelineBaseClass = object
@@ -84,7 +86,7 @@ class Pipeline(Thread):
     def run(self):
         self.result = self.run_pipeline()
 
-    def run_pipeline(self, supercluster_index=0, progressCallback=None):
+    def run_pipeline(self, supercluster_index=3, progressCallback=None):
 
         self.progressCallback = progressCallback
 
@@ -201,7 +203,39 @@ class Pipeline(Thread):
         return True
 
 
-    def run_clustering(self, num_of_clusters=-1, progressCallback=None):
+    def prepare_clustering(self, max_num_of_clusters=-1, progressCallback=None):
+
+        if ( max_num_of_clusters == None ) or max_num_of_clusters <= 0:
+            
+            # cluster objects in mahalanobis space
+            try:
+                number_of_clusters
+            except:
+                number_of_clusters = len( self.adc.treatments )
+
+            max_num_of_clusters = number_of_clusters
+
+
+        self.progressCallback = progressCallback
+
+        self.update_progress( 0 )
+
+        global progress
+        progress = 0.0
+        def cluster_callback(iterations, swaps):
+            global progress
+            progress += 2
+            self.update_progress( int( progress + 0.5 ) )
+            return True
+
+        best_num_of_clusters, gaps, sk = cluster.determine_num_of_clusters( self.nonControlTransformedFeatures, max_num_of_clusters, num_of_reference_datasets )
+
+        self.update_progress( 100 )
+
+        return best_num_of_clusters, gaps, sk
+
+
+    def run_clustering(self, num_of_clusters=-1, calculate_silhouette=False, progressCallback=None):
 
         if ( num_of_clusters == None ) or num_of_clusters <= 0:
             
@@ -232,6 +266,7 @@ class Pipeline(Thread):
                 self.nonControlTransformedFeatures,
                 num_of_clusters,
                 minkowski_p,
+                calculate_silhouette,
                 cluster_callback
         )
 

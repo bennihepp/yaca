@@ -335,16 +335,25 @@ class ResultsWindow(QWidget):
 
         #self.pipeline.run_clustering( self.number_of_clusters )
 
+        findNumberOfClusters = bool( self.findNumberOfClusters_checkBox.isChecked() )
+
+        if findNumberOfClusters:
+            number_of_clusters, gaps, sk = self.pipeline.prepare_clustering( self.number_of_clusters )
+            print 'best number of clusters: %d' % number_of_clusters
+        else:
+            number_of_clusters = self.number_of_clusters
+
         calculate_silhouette = bool( self.findNumberOfClusters_checkBox.isChecked() )
+        calculate_silhouette = False
 
         if calculate_silhouette:
             n_offset = 2
         else:
-            n_offset = self.number_of_clusters
+            n_offset = number_of_clusters
 
         s = []
         p = []
-        for n in xrange( n_offset, self.number_of_clusters + 1 ):
+        for n in xrange( n_offset, number_of_clusters + 1 ):
             print 'clustering with %d clusters...' % n
             self.pipeline.run_clustering( n, calculate_silhouette )
             partition = self.pipeline.nonControlPartition
@@ -384,6 +393,11 @@ class ResultsWindow(QWidget):
         self.group_combo.setCurrentIndex( -1 )
 
         self.on_group_policy_changed( self.GROUP_POLICY_CLUSTERING )
+
+        if findNumberOfClusters:
+            self.barplot = HistogramWindow()
+            self.barplot.draw_barplot( gaps, range( 1, len( gaps ) + 1 ), yerr=sk )
+            self.barplot.show()
 
         if calculate_silhouette:
             self.barplot = HistogramWindow()

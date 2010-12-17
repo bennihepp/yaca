@@ -75,6 +75,11 @@ def cutoff_control_cells( adc, featureNames, imageMask, cellMask ):
     median_mahal_dist = numpy.median( mahal_dist[ refMask ] )
     cutoff_mahal_dist = median_mahal_dist * control_cutoff_threshold
 
+    print mahal_dist[ refMask ]
+    print mahal_dist[ : ]
+    print min( mahal_dist )
+    print max( mahal_dist )
+
     cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
 
     controlCellMask = numpy.logical_and( cellMask , numpy.logical_not( cutoffCellMask ) )
@@ -86,6 +91,12 @@ def cutoff_control_cells( adc, featureNames, imageMask, cellMask ):
     print 'non-control-like cells: %d' % numpy.sum( nonControlCellMask )
 
     featureIds, badStddevFeatures, badCorrFeatures = select_features( objFeatures, featureIds )
+
+    print 'features with bad stddev:'
+    print badStddevFeatures
+
+    print 'strongly correlated features:'
+    print badCorrFeatures
 
     #objFeatures = adc.objFeatures[ nonControlCellMask ]
 
