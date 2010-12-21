@@ -6,6 +6,8 @@ import numpy
 import struct
 import Image
 import ImageChops
+import ImageEnhance
+from libtiff import TIFF
 
 
 TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%d.tiff'
@@ -63,6 +65,31 @@ class ImagePixmapFactory(object):
         self.adc = adc
         self.channelMapping = channelMapping
 
+    def getObjIndexMultiplier(self, img):
+
+        pixel_arr = self.convertImageToShortArray( img )
+        mask = pixel_arr > 0
+        multiplier = numpy.min( pixel_arr[ mask ] )
+
+        pixel_arr /= multiplier
+        d = {}
+        for p in pixel_arr:
+            if p not in d:
+                d[p] = 0
+            d[p] += 1
+
+        return multiplier
+
+    def maskPixelArray(self, pixel_arr, objIndex):
+
+        #pixel_arr = pixel_arr / multiplier
+
+        mask = numpy.logical_or( pixel_arr > objIndex, pixel_arr < objIndex )
+        #mask = pixel_arr < objIndex
+        pixel_arr[ mask ] = 0
+        pixel_arr[ numpy.invert( mask ) ] = 255
+
+        return pixel_arr
 
     def adjustImage(self, pixel_arr, black, white, brightness, invert, binary):
 
@@ -95,15 +122,40 @@ class ImagePixmapFactory(object):
 
         return img.crop ( rect )
 
-    def convertImageToByteArray(self, img):
+    def convertImageToShortArray(self, img, img_type=None):
 
         pixel_arr = numpy.array( img.getdata() )
 
-        # Transform 16bit images to 8bit
-        if img.mode == 'I;16':
+        if img_type == None:
+            img_type = self.getImageType( img )
 
-            # Check for R-Scan images
-            if ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all():
+        # Transform 16bit images to 8bit
+        if img_type == 'I;16' or img_type == 'Scan-R':
+
+            # Check for Scan-R images
+            if img_type == 'Scan-R': # or ( ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all() ):
+                pixel_arr = pixel_arr + 2**15
+                #pixel_arr = pixel_arr * (2**8-1.0)/(2**12-1.0)
+
+            else:
+                mask = pixel_arr < 0
+                pixel_arr[ mask ] += 2**16
+                #pixel_arr = pixel_arr * (2**8-1.0)/(2**16-1.0)
+
+        return pixel_arr
+
+    def convertImageToByteArray(self, img, img_type=None):
+
+        pixel_arr = numpy.array( img.getdata() )
+
+        if img_type == None:
+            img_type = self.getImageType( img )
+
+        # Transform 16bit images to 8bit
+        if img_type == 'I;16' or img_type == 'Scan-R':
+
+            # Check for Scan-R images
+            if img_type == 'Scan-R': # or ( ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all() ):
                 pixel_arr = pixel_arr + 2**15
                 pixel_arr = pixel_arr * (2**8-1.0)/(2**12-1.0)
 
@@ -118,8 +170,139 @@ class ImagePixmapFactory(object):
         tmp_str = struct.pack( '@%dB' % len( pixel_arr ), *pixel_arr)
         return Image.fromstring( 'L', img_size, tmp_str, "raw", "L", 0, 1 )
 
+    def getImageType(self, img):
 
-    def createPixmap(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
+        img_type = img.mode
+        if img.format == 'TIFF':
+            for k in img.tag.keys():
+                if 'National Instruments IMAQ' in img.tag[ k ]:
+                    img_type = 'Scan-R'
+                    break
+
+        return img_type
+
+
+    def createImageMask(self, index, channel, left, top, width, height, tmp_image_filename=None, imageCache=None, cacheId=None):
+
+        use_cache = imageCache != None
+
+        if cacheId == None:
+            cacheId = int( index )
+
+        if not tmp_image_filename:
+            tmp_image_filename = self.TMP_IMAGE_FILENAME_TEMPLATE % \
+                                 ( str( numpy.random.randint(sys.maxint) ), str( time.time() ) )
+
+        imageFiles = self.adc.images[ index ].imageFiles
+
+        path = None
+        for n,p in imageFiles:
+            if n == channel:
+                path = p
+                break
+
+        if path == None:
+            raise Exception( 'The specified channel is not valid: %s' % channel )
+
+        #objIndex = int( self.features[ index , self.adc.objFeatureIds[ 'Cells_Number_Object_Number' ] ] )
+
+        rect = None
+
+        img_size = None
+
+        if use_cache:
+
+            if not cacheId in imageCache:
+                imageCache[ cacheId ] = {}
+
+            files_cached = ( 'files' in imageCache[ cacheId ] )
+
+            region = ( left, top, width, height )
+
+            if files_cached:
+                oldRegion = imageCache[ cacheId ][ 'region' ]
+                if oldRegion != region:
+                    files_cached = False
+
+            if not files_cached:
+                imageCache[ cacheId ][ 'files' ] = {}
+                imageCache[ cacheId ][ 'region' ] = region
+
+        else:
+            files_cached = False
+
+        img = None
+
+        if files_cached and ( channel in imageCache[ cacheId ][ 'files' ] ):
+            file_cached = True
+        else:
+            file_cached = False
+
+        adjustment_changed = True
+
+        if not file_cached:
+
+            tmp_img = self.loadImage( path )
+
+            img_type = self.getImageType( tmp_img )
+
+            xc = int( left + width/2.0 + 0.5 )
+            yc = int( top + height/2.0 + 0.5 )
+            objIndex = tmp_img.getpixel( (xc, yc ) )
+
+            #multiplier = self.getObjIndexMultiplier( tmp_img )
+
+            if rect == None:
+
+                if width < 0:
+                    width = tmp_img.size[ 0 ] - left
+                if height < 0:
+                    height = tmp_img.size[ 1 ] - top
+                rect = ( left, top, left + width, top + height )
+
+            img = self.cropImage( tmp_img, rect )
+            #del tmp_img
+
+            img_size = img.size
+
+            pixel_arr = self.convertImageToShortArray( img, img_type )
+
+            if use_cache:
+                imageCache[ cacheId ][ 'files' ][ channel ] = {}
+                imageCache[ cacheId ][ 'files' ][ channel ][ 'raw_16bit_pixels' ] = pixel_arr.copy()
+                imageCache[ cacheId ][ 'files' ][ channel ][ 'image_size' ] = img_size
+                imageCache[ cacheId ][ 'files' ][ channel ][ 'objIndex' ] = objIndex
+
+        else:
+
+            pixel_arr     = imageCache[ cacheId ][ 'files' ][ channel ][ 'raw_16bit_pixels' ]
+            img_size      = imageCache[ cacheId ][ 'files' ][ channel ][ 'image_size' ]
+            objIndex    = imageCache[ cacheId ][ 'files' ][ channel ][ 'objIndex' ]
+
+            pixel_arr = pixel_arr.copy()
+
+            adjustment_changed = False
+
+
+        if adjustment_changed:
+
+            pixel_arr = self.maskPixelArray( pixel_arr, objIndex )
+
+            img = self.convertByteArrayToImage( pixel_arr, img_size )
+
+            #del pixel_arr
+
+            if use_cache:
+                imageCache[ cacheId ][ 'files' ][ channel ][ 'processed_mask' ] = img.copy()
+
+        else:
+
+            img = imageCache[ cacheId ][ 'files' ][ channel ][ 'processed_mask' ]
+
+        return img
+
+
+    def createImage(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
 
             use_cache = imageCache != None
 
@@ -197,6 +380,8 @@ class ImagePixmapFactory(object):
 
                         tmp_img = self.loadImage( path )
 
+                        img_type = self.getImageType( tmp_img )
+
                         if rect == None:
 
                             if width < 0:
@@ -210,7 +395,7 @@ class ImagePixmapFactory(object):
 
                         img_size = img.size
 
-                        pixel_arr = self.convertImageToByteArray( img )
+                        pixel_arr = self.convertImageToByteArray( img, img_type )
 
                         if use_cache:
                             imageCache[ cacheId ][ 'files' ][ channel ] = {}
@@ -303,54 +488,69 @@ class ImagePixmapFactory(object):
             if not rgb_channels_changed:
 
                 merged_img = imageCache[ cacheId ][ 'merged_image' ]
-                mode       = imageCache[ cacheId ][ 'mode' ]
 
             else:
 
                 if color:
-                    mode = 'RGB'
-                    merged_img = Image.merge( mode, imgs[ : 3 ] )
+                    merged_img = Image.merge( 'RGB', imgs[ :3 ] )
+
                 else:
-                    mode = 'L'
-                    merged_img = ImageChops.lighter( imgs[0], imgs[1] )
-                    merged_img = ImageChops.lighter( merged_img, imgs[2] )
+                    merged_img = None
+                    for c in 'RGB':
+                        if c in channelAdjustment:
+                            merged_img = img_dict[ c ]
+                            break
+                    if merged_img == None:
+                        merged_img = Image.new( 'L', img_size )
+
+                    #print '  merging gray-scale image...'
+                    #print '  ', imgs[0].mode, imgs[1].mode, imgs[2].mode
+                    #ie = ImageEnhance.Contrast( merged_img )
+                    #merged_img = ie.enhance( 0.0 )
 
                 if use_cache:
                     imageCache[ cacheId ][ 'merged_image' ] = merged_img.copy()
-                    imageCache[ cacheId ][ 'mode' ]         = mode
 
-            img = merged_img
+            del imgs[ :3 ]
 
-            if len(imgs) > 3:
-                del imgs[:3]
+            if len(imgs) > 0:
+                #del imgs[:3]
                 while len(imgs) > 1:
                     img1,img2 = imgs[0],imgs[1]
                     tmp = ImageChops.lighter( img1, img2 )
                     del imgs[0]#, img1, img2
                     imgs[0] = tmp
-                imgs[0].save('/home/benjamin/tmp.tif')
-                imgs[0] = imgs[0].convert( mode )
-                imgs[0].save('/home/benjamin/tmp_rgb.tif')
-                tmp = ImageChops.lighter( img, imgs[0])
-                del img
-                img = tmp
-    
+                #imgs[0].save('/home/benjamin/tmp.tif')
+                if imgs[0].mode != merged_img.mode:
+                    imgs[0] = imgs[0].convert( merged_img.mode )
+                #imgs[0].save('/home/benjamin/tmp_rgb.tif')
+                #merged_img.save('/home/benjamin/merged.tif')
+                tmp = ImageChops.lighter( merged_img, imgs[0])
+                #tmp.save('/home/benjamin/merged_tmp.tif')
+                del merged_img
+                merged_img = tmp
+
             #del imgs[:]
             #del imgs
     
-            img.save( tmp_image_filename )
-            #del img
+            #if merged_img.mode != 'RGB':
+            #    merged_img = merged_img.convert( 'RGB' )
+            #merged_img.save('/home/benjamin/rgb.tif')
     
-            #qtimg = QImage( tmp_image_filename )
-            #pix = QPixmap.fromImage( qtimg )
-    
-            #del qtimg
-    
-            pix = QPixmap( tmp_image_filename )
-   
-            os.remove( tmp_image_filename )
+            return merged_img
 
-            return pix
+
+    def createPixmap(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
+        img = self.createImage( index, left, top, width, height, channelAdjustment, color, tmp_image_filename, imageCache, cacheId )
+
+        img.save( tmp_image_filename )
+
+        pix = QPixmap( tmp_image_filename )
+
+        os.remove( tmp_image_filename )
+
+        return pix
+
 
     def createPixmap2(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
 
@@ -437,6 +637,9 @@ class ImagePixmapFactory(object):
                     if not img_cached:
 
                         tmp = Image.open( path )
+
+                        #img = TIFF.open( sys.argv[1] )
+                        #pixel_arr = img.read_image()
 
                         if rect == None:
                             if width < 0:
@@ -644,12 +847,13 @@ class CellPixmapFactory(ImagePixmapFactory):
         else:
             self.features = self.adc.objFeatures[ : ]
 
-    def createPixmap(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None):
+    def createImageMask(self, index, channel, left, top, width, height, tmp_image_filename=None, imageCache=None, cacheId=None):
 
             objId = int( self.features[ index , self.adc.objObjectFeatureId ] )
             imgId = int( self.features[ index , self.adc.objImageFeatureId ] )
 
-            cacheId = int( index )
+            if cacheId == None:
+                cacheId = int( index )
 
             if left < 0 or top < 0:
                 xc = int( float( self.adc.objects[objId].position_x ) + 0.5 )
@@ -658,7 +862,42 @@ class CellPixmapFactory(ImagePixmapFactory):
                 left = xc - width / 2
                 top = yc - width / 2
 
-            return ImagePixmapFactory.createPixmap( self, imgId, left, top, width, height, channelAdjustment, color, tmp_image_filename, imageCache, cacheId )
+            return ImagePixmapFactory.createImageMask( self, imgId, channel, left, top, width, height, tmp_image_filename, imageCache, cacheId )
+
+    def createImage(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
+
+            objId = int( self.features[ index , self.adc.objObjectFeatureId ] )
+            imgId = int( self.features[ index , self.adc.objImageFeatureId ] )
+
+            if cacheId == None:
+                cacheId = int( index )
+
+            if left < 0 or top < 0:
+                xc = int( float( self.adc.objects[objId].position_x ) + 0.5 )
+                yc = int( float( self.adc.objects[objId].position_y ) + 0.5 )
+
+                left = xc - width / 2
+                top = yc - width / 2
+
+            return ImagePixmapFactory.createImage( self, imgId, left, top, width, height, channelAdjustment, color, tmp_image_filename, imageCache, cacheId )
 
 
+class CustomPixmapFactory(object):
+
+    def __init__(self, images):
+        self.images = images
+
+    def createImage(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
+        return self.images[ index ]
+
+    def createPixmap(self, index, left, top, width, height, channelAdjustment, color, tmp_image_filename=None, imageCache=None, cacheId=None):
+        img = self.createImage( index, left, top, width, height, channelAdjustment, color, tmp_image_filename, imageCache, cacheId )
+
+        img.save( tmp_image_filename )
+
+        pix = QPixmap( tmp_image_filename )
+
+        os.remove( tmp_image_filename )
+
+        return pix
 

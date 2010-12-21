@@ -6,6 +6,10 @@ from PyQt4.QtOpenGL import *
 from ..main_gui import TRY_OPENGL
 
 import numpy
+import cStringIO
+import bz2
+import Image
+import ImageChops
 import time
 
 
@@ -238,6 +242,8 @@ if TRY_OPENGL:
 
 class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
+    __pyqtSignals__ = ('pixmapSelected',)
+
     PIXMAP_SPACING = 8
 
     TEXT_VERTICAL_OFFSET = 1
@@ -263,6 +269,17 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
                 guint = None
             textures.append( guint )
         return textures"""
+
+    def mouseDoubleClickEvent(self, event):
+        btn = event.buttons()
+        if btn == Qt.LeftButton:
+            x,y = event.x(),event.y()
+            x -= self.PIXMAP_SPACING
+            y -= self.PIXMAP_SPACING
+            column = x / ( self.PIXMAP_SPACING + self.pixmap_width )
+            row = y / ( self.PIXMAP_SPACING + self.pixmap_height )
+            index = row * self.columns + column
+            self.emit( SIGNAL('pixmapSelected'), index, row, column, event )
 
     def set_pixmaps_and_texts(self, rows, columns, pixmaps, focus_index, pixmap_texts):
         self.rows = rows
@@ -453,15 +470,126 @@ class GalleryWindow(QWidget):
         self.featureFactory = featureFactory
 
         self.focus_i = -1
-        for i in xrange(selectionIds.shape[0]):
+        for i in xrange( len( selectionIds ) ):
             if selectionIds[i] == focusId:
                 self.focus_i = i
                 break
 
         self.start_i = max( 0, self.focus_i - self.rows * self.columns / 2 )
-        self.stop_i = min( self.start_i + self.rows * self.columns, selectionIds.shape[0] )
+        self.stop_i = min( self.start_i + self.rows * self.columns, len( selectionIds ) )
+
+        self.img_comp = None
 
         self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
+
+    def concatenate_imgs(self, img1, img2, mode='side-by-side'):
+        img_mode = img1.mode
+        img_size = img1.size
+        new_img_size = ( 2*img_size[0], 2*img_size[1] )
+        img3 = Image.new( img_mode, new_img_size )
+        img3.paste( img1, ( 0,0 ) )
+        img3.paste( img2, ( img_size[0],0 ) )
+        img3.paste( img2, ( 0,img_size[1] ) )
+        img3.paste( img1, ( img_size[0],img_size[1] ) )
+        return img3
+
+    def compress_and_measure_img(self, img, format='JPEG', **kwargs):
+        if format == 'JPEG' or 'PNG':
+            sio = cStringIO.StringIO()
+            img.save( sio, format, **kwargs)
+            s = sio.getvalue()
+            sio.close()
+            s = bz2.compress( s )
+            return float( len( s ) )
+        elif format == 'pgm':
+            sio = cStringIO.StringIO()
+            arr = numpy.array( img.getdata() )
+            for c in arr:
+                sio.write('%d ') % c
+            s = sio.getvalue()
+            sio.close()
+            s = bz2.compress( s )
+            return float( len( s ) )
+
+    def load_cell_image(self, imageId):
+        img = self.pixmapFactory.createImage(
+                                imageId,
+                                -1,
+                                -1,
+                                self.pixmap_width,
+                                self.pixmap_height,
+                                self.channelAdjustment,
+                                self.color,
+                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( imageId ), str( time.time() ) ),
+                                self.imageCache,
+                                int( imageId )
+        )
+        name = 'CellsObjects'
+        img_mask = self.pixmapFactory.createImageMask(
+                                imageId,
+                                name,
+                                -1,
+                                -1,
+                                self.pixmap_width,
+                                self.pixmap_height,
+                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( imageId ), str( time.time() ) ),
+                                self.imageCache,
+                                int( imageId )
+        )
+        return ImageChops.darker( img, img_mask )
+
+    def comp_imgs(self, id1, ids, format='JPEG', **kwargs):
+        img1 = self.load_cell_image( int( id1 ) )
+        imgs = []
+        for id2 in ids:
+            img2 = self.load_cell_image( int( id2 ) )
+            imgs.append( img2 )
+
+        C1 = self.compress_and_measure_img( img1, format, **kwargs )
+        C2s = []
+        for img2 in imgs:
+            C2s.append( self.compress_and_measure_img( img2, format, **kwargs) )
+        C2s = numpy.array( C2s )
+        C12s = []
+        for img2 in imgs:
+            img3 = self.concatenate_imgs( img1, img2 )
+            C12 = self.compress_and_measure_img( img3, format, **kwargs )
+            img4 = self.concatenate_imgs( img2, img1 )
+            C12 += self.compress_and_measure_img( img4, format, **kwargs )
+            C12 /= 4.0
+            C12s.append( C12 )
+        C12s = numpy.array( C12s )
+
+        self.gw = GalleryWindow( self.featureDescription, self.channelMapping, self.channelDescription )
+        from gui_utils import CustomPixmapFactory
+        pixmapFactory = CustomPixmapFactory( imgs )
+        self.gw.on_selection_changed( -1, range( len( imgs ) ), pixmapFactory, None )
+        self.gw.show()
+
+        NCDs = []
+        for i in xrange( len( C2s ) ):
+            NCD_numerator = C12s[ i ] - min( C1, C2s[ i ] )
+            NCD_denominator = max( C1, C2s[ i ] )
+            NCDs.append( NCD_numerator / NCD_denominator )
+
+        for i in xrange( len( NCDs ) ):
+            print '%d: %f' % (i, NCDs[i])
+
+        NCDs = numpy.array( NCDs )
+
+    def on_pixmap_selected(self, index, row, column, event):
+        i = self.start_i + index
+        pixmapId = self.idMapping[ i ]
+        if self.random and index == 0 and self.focus_i >= 0:
+            pixmapId = self.focus_i
+        id1 = self.selectionIds[ pixmapId ]
+        ids = []
+        for i in xrange( self.start_i, self.stop_i ):
+            pixmapId = self.idMapping[ i ]
+            if self.random and i == self.start_i and self.focus_i >= 0:
+                pixmapId = self.focus_i
+            ids.append( self.selectionIds[ pixmapId ] )
+        self.comp_imgs(id1, ids)
 
     def on_reload_images(self, start_i, stop_i, focus_i=-1):
 
@@ -698,9 +826,9 @@ class GalleryWindow(QWidget):
             self.start_i = max( 0, self.stop_i - self.rows * self.columns )
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
     def on_next(self):
-        if self.stop_i + 1 < self.selectionIds.shape[0]:
+        if self.stop_i + 1 < len( self.selectionIds ):
             self.start_i = self.stop_i
-            self.stop_i = min( self.start_i + self.rows * self.columns, self.selectionIds.shape[0] )
+            self.stop_i = min( self.start_i + self.rows * self.columns, len( self.selectionIds ) )
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
     """def calculate_pixmap_size(self):
@@ -745,7 +873,7 @@ class GalleryWindow(QWidget):
         self.resize( self.minimumSize() )
 
         if self.selectionIds != None:
-            self.stop_i = min( self.start_i + self.rows * self.columns, self.selectionIds.shape[0] )
+            self.stop_i = min( self.start_i + self.rows * self.columns, len( self.selectionIds ) )
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
     def on_row_or_column_changed(self):
@@ -771,7 +899,7 @@ class GalleryWindow(QWidget):
         self.resize( self.minimumSize() )
 
         if self.selectionIds != None:
-            self.stop_i = min( self.start_i + self.rows * self.columns, self.selectionIds.shape[0] )
+            self.stop_i = min( self.start_i + self.rows * self.columns, len( self.selectionIds ) )
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
         """#print self.minimumSizeHint()
@@ -838,12 +966,12 @@ class GalleryWindow(QWidget):
         elif self.channelAdjustment.has_key( channel ):
             del self.channelAdjustment[ channel ]
 
-        if checked and not self.color:
-            foundActive = False
-            self.channelAdjustment = { channel : self.channelAdjustment[ channel ] }
+        # TODO for gray-scale
+        if checked and not self.color and channel in 'RGB':
             for ca in self.channelAdjusters:
-                if channel != ca.channelName and channel in 'RGB':
+                if channel != ca.channelName and ca.channelName in 'RGB':
                     ca.setActive( False, False )
+                    del self.channelAdjustment[ ca.channelName ]
 
         if self.selectionIds != None:
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
@@ -854,16 +982,22 @@ class GalleryWindow(QWidget):
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
     def on_color_changed(self, color):
-        foundActive = False
         self.color = bool( color )
+
+        # TODO for gray-scale
         if not color:
+            foundActive = False
             for ca in self.channelAdjusters:
                 if ca.channelName in 'RGB':
                     if foundActive:
                         ca.setActive( False, False )
                     elif ca.isActive():
-                        self.channelAdjustment = { ca.channelName : self.channelAdjustment[ ca.channelName ] }
+                        #self.channelAdjustment = { ca.channelName : self.channelAdjustment[ ca.channelName ] }
+                        for c in 'RGB':
+                            if c != ca.channelName and c in self.channelAdjustment:
+                                del self.channelAdjustment[ c ]
                         foundActive = True
+
         if self.selectionIds != None:
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
@@ -876,6 +1010,7 @@ class GalleryWindow(QWidget):
             self.pixmap_height = -1
 
         self.pixmaparea = GalleryPixmapArea()
+        self.connect( self.pixmaparea, SIGNAL('pixmapSelected'), self.on_pixmap_selected )
         #self.pixmaparea.setLayout(self.grid)
 
         hbox1 = QHBoxLayout()
