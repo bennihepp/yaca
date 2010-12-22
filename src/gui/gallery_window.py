@@ -5,16 +5,12 @@ from PyQt4.QtOpenGL import *
 
 from ..main_gui import TRY_OPENGL
 
+from ..core.image_comparison import ImageComparer
+
 import numpy
-import cStringIO
-import bz2
-import Image
-import ImageChops
 import time
 
-
-
-TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%s-%s-%s.tiff'
+import ImageChops
 
 
 
@@ -409,9 +405,13 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
 class GalleryWindow(QWidget):
 
+
     DEFAULT_PIXMAP_SIZE = 128
     MIN_PIXMAP_SIZE = 64
     MAX_PIXMAP_SIZE = 256
+
+    TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%s-%s-%s.tiff'
+
 
     def __init__(self, featureDescription, channelMapping, channelDescription, singleImage=False, parent=None):
         super(QWidget,self).__init__(parent)
@@ -419,7 +419,7 @@ class GalleryWindow(QWidget):
 
         self.singleImage = singleImage
 
-        self.tmp_image_filename = TMP_IMAGE_FILENAME_TEMPLATE
+        self.tmp_image_filename = self.TMP_IMAGE_FILENAME_TEMPLATE
         self.tmp_image_filename_rnd = numpy.random.randint(sys.maxint)
 
         self.selectionIds = None
@@ -482,35 +482,6 @@ class GalleryWindow(QWidget):
 
         self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
-    def concatenate_imgs(self, img1, img2, mode='side-by-side'):
-        img_mode = img1.mode
-        img_size = img1.size
-        new_img_size = ( 2*img_size[0], 2*img_size[1] )
-        img3 = Image.new( img_mode, new_img_size )
-        img3.paste( img1, ( 0,0 ) )
-        img3.paste( img2, ( img_size[0],0 ) )
-        img3.paste( img2, ( 0,img_size[1] ) )
-        img3.paste( img1, ( img_size[0],img_size[1] ) )
-        return img3
-
-    def compress_and_measure_img(self, img, format='JPEG', **kwargs):
-        if format == 'JPEG' or 'PNG':
-            sio = cStringIO.StringIO()
-            img.save( sio, format, **kwargs)
-            s = sio.getvalue()
-            sio.close()
-            s = bz2.compress( s )
-            return float( len( s ) )
-        elif format == 'pgm':
-            sio = cStringIO.StringIO()
-            arr = numpy.array( img.getdata() )
-            for c in arr:
-                sio.write('%d ') % c
-            s = sio.getvalue()
-            sio.close()
-            s = bz2.compress( s )
-            return float( len( s ) )
-
     def load_cell_image(self, imageId):
         img = self.pixmapFactory.createImage(
                                 imageId,
@@ -520,7 +491,6 @@ class GalleryWindow(QWidget):
                                 self.pixmap_height,
                                 self.channelAdjustment,
                                 self.color,
-                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( imageId ), str( time.time() ) ),
                                 self.imageCache,
                                 int( imageId )
         )
@@ -532,50 +502,10 @@ class GalleryWindow(QWidget):
                                 -1,
                                 self.pixmap_width,
                                 self.pixmap_height,
-                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( imageId ), str( time.time() ) ),
                                 self.imageCache,
                                 int( imageId )
         )
         return ImageChops.darker( img, img_mask )
-
-    def comp_imgs(self, id1, ids, format='JPEG', **kwargs):
-        img1 = self.load_cell_image( int( id1 ) )
-        imgs = []
-        for id2 in ids:
-            img2 = self.load_cell_image( int( id2 ) )
-            imgs.append( img2 )
-
-        C1 = self.compress_and_measure_img( img1, format, **kwargs )
-        C2s = []
-        for img2 in imgs:
-            C2s.append( self.compress_and_measure_img( img2, format, **kwargs) )
-        C2s = numpy.array( C2s )
-        C12s = []
-        for img2 in imgs:
-            img3 = self.concatenate_imgs( img1, img2 )
-            C12 = self.compress_and_measure_img( img3, format, **kwargs )
-            img4 = self.concatenate_imgs( img2, img1 )
-            C12 += self.compress_and_measure_img( img4, format, **kwargs )
-            C12 /= 4.0
-            C12s.append( C12 )
-        C12s = numpy.array( C12s )
-
-        self.gw = GalleryWindow( self.featureDescription, self.channelMapping, self.channelDescription )
-        from gui_utils import CustomPixmapFactory
-        pixmapFactory = CustomPixmapFactory( imgs )
-        self.gw.on_selection_changed( -1, range( len( imgs ) ), pixmapFactory, None )
-        self.gw.show()
-
-        NCDs = []
-        for i in xrange( len( C2s ) ):
-            NCD_numerator = C12s[ i ] - min( C1, C2s[ i ] )
-            NCD_denominator = max( C1, C2s[ i ] )
-            NCDs.append( NCD_numerator / NCD_denominator )
-
-        for i in xrange( len( NCDs ) ):
-            print '%d: %f' % (i, NCDs[i])
-
-        NCDs = numpy.array( NCDs )
 
     def on_pixmap_selected(self, index, row, column, event):
         i = self.start_i + index
@@ -589,7 +519,53 @@ class GalleryWindow(QWidget):
             if self.random and i == self.start_i and self.focus_i >= 0:
                 pixmapId = self.focus_i
             ids.append( self.selectionIds[ pixmapId ] )
-        self.comp_imgs(id1, ids)
+
+        imgs = []
+
+        img1 = self.load_cell_image( int( id1 ) )
+        for id2 in ids:
+            img2 = self.load_cell_image( int( id2 ) )
+            imgs.append( img2 )
+
+        ic = ImageComparer()
+
+        results = ic.comp_imgs( img1, imgs, method='MSE' )
+
+        print 'results:'
+        for r in xrange( self.rows ):
+            sys.stdout.write( '  ' )
+            for c in xrange( self.columns ):
+                sys.stdout.write( '%03.3f \t ' % results[ r * self.columns + c ] )
+            sys.stdout.write( '\n' )
+        sys.stdout.write( '\n' )
+        sys.stdout.flush()
+
+        results,shifts = ic.comp_imgs( img1, imgs, method='MSE_optimized' )
+
+        print 'shifts:'
+        for r in xrange( self.rows ):
+            sys.stdout.write( '  ' )
+            for c in xrange( self.columns ):
+                sys.stdout.write( '(%02d,%02d) \t ' % shifts[ r * self.columns + c ] )
+            sys.stdout.write( '\n' )
+        sys.stdout.write( '\n' )
+        sys.stdout.flush()
+
+        print 'results:'
+        for r in xrange( self.rows ):
+            sys.stdout.write( '  ' )
+            for c in xrange( self.columns ):
+                sys.stdout.write( '%03.3f \t ' % results[ r * self.columns + c ] )
+            sys.stdout.write( '\n' )
+        sys.stdout.write( '\n' )
+        sys.stdout.flush()
+
+        self.gw = GalleryWindow( self.featureDescription, self.channelMapping, self.channelDescription )
+        from gui_utils import PixmapFactory
+        pixmapFactory = PixmapFactory( imgs )
+        self.gw.on_selection_changed( -1, range( len( imgs ) ), pixmapFactory, None )
+        self.gw.show()
+
 
     def on_reload_images(self, start_i, stop_i, focus_i=-1):
 
@@ -971,7 +947,8 @@ class GalleryWindow(QWidget):
             for ca in self.channelAdjusters:
                 if channel != ca.channelName and ca.channelName in 'RGB':
                     ca.setActive( False, False )
-                    del self.channelAdjustment[ ca.channelName ]
+                    if ca.channelName in self.channelAdjustment:
+                        del self.channelAdjustment[ ca.channelName ]
 
         if self.selectionIds != None:
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
