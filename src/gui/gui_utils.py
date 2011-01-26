@@ -14,22 +14,22 @@ import time
 
 class CellFeatureTextFactory(object):
 
-    def __init__(self, adc, objMask=None, mahalFeatures=None):
-        self.adc = adc
+    def __init__(self, pdc, objMask=None, mahalFeatures=None):
+        self.pdc = pdc
         if objMask != None:
-            self.features = self.adc.objFeatures[ objMask ]
+            self.features = self.pdc.objFeatures[ objMask ]
         else:
-            self.features = self.adc.objFeatures[ : ]
+            self.features = self.pdc.objFeatures[ : ]
         self.mahalFeatures = mahalFeatures
-        self.mahalFeatureIdOffset = len( self.adc.objFeatureIds )
+        self.mahalFeatureIdOffset = len( self.pdc.objFeatureIds )
 
     def createFeatureText(self, index, featureId):
 
         #print 'index=%s, featureId=%s' % (str(index),str(featureId))
 
         if featureId < self.mahalFeatureIdOffset or self.mahalFeatures == None:
-            if featureId == self.adc.objTreatmentFeatureId:
-                return self.adc.treatments[ int( self.features[ index, featureId ] ) ].name
+            if featureId == self.pdc.objTreatmentFeatureId:
+                return self.pdc.treatments[ int( self.features[ index, featureId ] ) ].name
             else:
                 return self.features[ index , featureId ]
 
@@ -39,19 +39,19 @@ class CellFeatureTextFactory(object):
 
 class ImageFeatureTextFactory(object):
 
-    def __init__(self, adc, imgMask=None):
-        self.adc = adc
+    def __init__(self, pdc, imgMask=None):
+        self.pdc = pdc
         if imgMask != None:
-            self.features = self.adc.imgFeatures[ imgMask ]
+            self.features = self.pdc.imgFeatures[ imgMask ]
         else:
-            self.features = self.adc.imgFeatures[ : ]
+            self.features = self.pdc.imgFeatures[ : ]
 
     def createFeatureText(self, index, featureId):
 
         #print 'index=%s, featureId=%s' % (str(index),str(featureId))
 
-        if featureId == self.adc.imgTreatmentFeatureId:
-            return self.adc.treatments[ int( self.features[ index, featureId ] ) ].name
+        if featureId == self.pdc.imgTreatmentFeatureId:
+            return self.pdc.treatments[ int( self.features[ index, featureId ] ) ].name
         else:
             return self.features[ index , featureId ]
 
@@ -73,6 +73,8 @@ class PixmapFactory(object):
             tmp_image_filename = self.TMP_IMAGE_FILENAME_TEMPLATE % \
                                  ( str( numpy.random.randint(sys.maxint) ), str( cacheId), str( time.time() ) )
 
+        s = img.size
+
         img.save( tmp_image_filename )
 
         pix = QPixmap( tmp_image_filename )
@@ -86,12 +88,28 @@ class PixmapFactory(object):
 class ImagePixmapFactory(PixmapFactory):
 
 
-    TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%d.tiff'
+    TMP_IMAGE_DIRECTORY = '/dev/shm'
+    if not os.path.isdir( TMP_IMAGE_DIRECTORY ):
+        TMP_IMAGE_DIRECTORY = '/tmp/shm'
+        if not os.path.isdir( TMP_IMAGE_DIRECTORY ):
+            os.mkdir( TMP_IMAGE_DIRECTORY )
+
+    TMP_IMAGE_FILENAME_EXTENSION = 'pbm'
+    if 'tif' in QImageReader.supportedImageFormats():
+        TMP_IMAGE_FILENAME_EXTENSION = 'tiff'
+
+    TMP_IMAGE_FILENAME_TEMPLATE = TMP_IMAGE_DIRECTORY + '/pdc-tmp-image-file-%d.' + TMP_IMAGE_FILENAME_EXTENSION
 
 
-    def __init__(self, adc, channelMapping ):
+    """@staticmethod
+    def from_CellPixmapFactory(cellPixmapFactory):
         PixmapFactory.__init__( self, None )
-        self.adc = adc
+        self.pdc = cellPixmapFactory.pdc
+        self.channelMapping = cellPixmapFactory.channelMapping"""
+
+    def __init__(self, pdc, channelMapping ):
+        PixmapFactory.__init__( self, None )
+        self.pdc = pdc
         self.channelMapping = channelMapping
 
     def getObjIndexMultiplier(self, img):
@@ -252,7 +270,7 @@ class ImagePixmapFactory(PixmapFactory):
         if cacheId == None:
             cacheId = int( index )
 
-        imageFiles = self.adc.images[ index ].imageFiles
+        imageFiles = self.pdc.images[ index ].imageFiles
 
         path = None
         for n,p in imageFiles:
@@ -263,7 +281,7 @@ class ImagePixmapFactory(PixmapFactory):
         if path == None:
             raise Exception( 'The specified channel is not valid: %s' % channel )
 
-        #objIndex = int( self.features[ index , self.adc.objFeatureIds[ 'Cells_Number_Object_Number' ] ] )
+        #objIndex = int( self.features[ index , self.pdc.objFeatureIds[ 'Cells_Number_Object_Number' ] ] )
 
         rect = None
 
@@ -372,7 +390,7 @@ class ImagePixmapFactory(PixmapFactory):
             if cacheId == None:
                 cacheId = int( index )
 
-            imageFiles = self.adc.images[ index ].imageFiles
+            imageFiles = self.pdc.images[ index ].imageFiles
 
             id_to_channel_map = { 0:'R', 1:'G', 2:'B' }
 
@@ -499,8 +517,8 @@ class ImagePixmapFactory(PixmapFactory):
 
             if img_size == None:
                 if width < 0 or height < 0:
-                    width = 0
-                    height = 0
+                    width = 1
+                    height = 1
                 img_size = ( width, height )
 
             imgs = []
@@ -602,24 +620,24 @@ class ImagePixmapFactory(PixmapFactory):
 
 class CellPixmapFactory(ImagePixmapFactory):
 
-    def __init__(self, adc, channelMapping, objMask=None, ):
-        ImagePixmapFactory.__init__( self, adc, channelMapping )
+    def __init__(self, pdc, channelMapping, objMask=None, ):
+        ImagePixmapFactory.__init__( self, pdc, channelMapping )
         if objMask != None:
-            self.features = self.adc.objFeatures[ objMask ]
+            self.features = self.pdc.objFeatures[ objMask ]
         else:
-            self.features = self.adc.objFeatures[ : ]
+            self.features = self.pdc.objFeatures[ : ]
 
     def createImageMask(self, index, channel, left, top, width, height, imageCache=None, cacheId=None):
 
-            objId = int( self.features[ index , self.adc.objObjectFeatureId ] )
-            imgId = int( self.features[ index , self.adc.objImageFeatureId ] )
+            objId = int( self.features[ index , self.pdc.objObjectFeatureId ] )
+            imgId = int( self.features[ index , self.pdc.objImageFeatureId ] )
 
             if cacheId == None:
                 cacheId = int( index )
 
             if left < 0 or top < 0:
-                xc = int( float( self.adc.objects[objId].position_x ) + 0.5 )
-                yc = int( float( self.adc.objects[objId].position_y ) + 0.5 )
+                xc = int( float( self.pdc.objects[objId].position_x ) + 0.5 )
+                yc = int( float( self.pdc.objects[objId].position_y ) + 0.5 )
 
                 left = xc - width / 2
                 top = yc - width / 2
@@ -628,15 +646,15 @@ class CellPixmapFactory(ImagePixmapFactory):
 
     def createImage(self, index, left, top, width, height, channelAdjustment, color, imageCache=None, cacheId=None):
 
-            objId = int( self.features[ index , self.adc.objObjectFeatureId ] )
-            imgId = int( self.features[ index , self.adc.objImageFeatureId ] )
+            objId = int( self.features[ index , self.pdc.objObjectFeatureId ] )
+            imgId = int( self.features[ index , self.pdc.objImageFeatureId ] )
 
             if cacheId == None:
                 cacheId = int( index )
 
             if left < 0 or top < 0:
-                xc = int( float( self.adc.objects[objId].position_x ) + 0.5 )
-                yc = int( float( self.adc.objects[objId].position_y ) + 0.5 )
+                xc = int( float( self.pdc.objects[objId].position_x ) + 0.5 )
+                yc = int( float( self.pdc.objects[objId].position_y ) + 0.5 )
 
                 left = xc - width / 2
                 top = yc - width / 2

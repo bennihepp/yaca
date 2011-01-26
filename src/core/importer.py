@@ -2,7 +2,6 @@ import sys
 import os
 
 
-from ioutil.import_cp1_csv import import_cp1_csv_files
 from ioutil.import_cp2_csv import import_cp2_csv_results
 from ioutil.import_export_hdf5 import *
 
@@ -11,20 +10,20 @@ import parameter_utils as utils
 
 
 
-adc = None
+pdc = None
 
 
 class Importer(object):
 
-    def get_adc(self):
-        global adc
-        return adc
+    def get_pdc(self):
+        global pdc
+        return pdc
 
 
 
 def set_state( state ):
 
-    global adc
+    global pdc
 
     if state == 'imported':
 
@@ -57,7 +56,7 @@ def set_state( state ):
 
 def import_data():
 
-    global adc
+    global pdc
 
     # import data from files
 
@@ -70,10 +69,10 @@ def import_data():
             max_results_file_mtime = os.path.getmtime(file)
     
     if os.path.isfile(hybrid_file) and ( os.path.getmtime(hybrid_file) > max_results_file_mtime ):
-        adc = import_hybrid_results(hybrid_file)
+        pdc = import_hybrid_results(hybrid_file)
     else:
-        adc = import_cp2_csv_results(file_images, files_objects, delimiter)
-        export_hybrid_results(hybrid_file, adc)"""
+        pdc = import_cp2_csv_results(file_images, files_objects, delimiter)
+        export_hybrid_results(hybrid_file, pdc)"""
 
     try:
         image_cp2_file
@@ -91,7 +90,7 @@ def import_data():
         object_file_postfix = '_' + os.path.splitext( os.path.basename( object_file ) )[0].split('_')[ -1 ]
         object_file_postfixes.append( object_file_postfix )
 
-    adc = import_cp2_csv_results( cp2_csv_path, image_file_postfix, object_file_postfixes, csv_delimiter, csv_extension )
+    pdc = import_cp2_csv_results( cp2_csv_path, image_file_postfix, object_file_postfixes, csv_delimiter, csv_extension )
 
     utils.update_state( __name__, 'imported' )
 
@@ -100,14 +99,14 @@ def import_data():
 
 def load_hdf5():
 
-    global adc
+    global pdc
 
     try:
         hdf5_input_file
     except:
-        raise Exception( 'You need to specify the APC HDF5 input file!' )
+        raise Exception( 'You need to specify the PhenoNice HDF5 input file!' )
 
-    adc = import_hdf5_results( hdf5_input_file )
+    pdc = import_hdf5_results( hdf5_input_file )
 
     utils.update_state( __name__, 'imported' )
 
@@ -116,19 +115,19 @@ def load_hdf5():
 
 def save_hdf5():
 
-    global adc
+    global pdc
 
     try:
         hdf5_output_file
     except:
-        raise Exception( 'You need to specify the APC HDF5 output file!' )
+        raise Exception( 'You need to specify the PhenoNice HDF5 output file!' )
 
     try:
-        adc
+        pdc
     except:
         raise Exception( 'You need to import data first!' )
 
-    export_hdf5_results( hdf5_output_file, adc )
+    export_hdf5_results( hdf5_output_file, pdc )
 
     return 'Finished saving HDF5 file'
 
@@ -148,15 +147,15 @@ utils.register_parameter( __name__, 'csv_delimiter', utils.PARAM_STR, 'Delimiter
 
 utils.register_parameter( __name__, 'csv_extension', utils.PARAM_STR, 'Extension for the CSV files', '.csv' )
 
-utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'APC HDF5 input file', optional=True )
+utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'PhenoNice HDF5 input file', optional=True )
 
-utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'APC HDF5 output file', optional=True )
+utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'PhenoNice HDF5 output file', optional=True )
 
 utils.register_action( __name__, 'import', 'Import data', import_data )
 
-utils.register_action( __name__, 'load_hdf5', 'Load data from a APC HDF5 file', load_hdf5 )
+utils.register_action( __name__, 'load_hdf5', 'Load data from a PhenoNice HDF5 file', load_hdf5 )
 
-utils.register_action( __name__, 'save_hdf5', 'Save data as APC HDF5 file', save_hdf5 )
+utils.register_action( __name__, 'save_hdf5', 'Save data as PhenoNice HDF5 file', save_hdf5 )
 
 utils.set_module_state_callback( __name__, set_state )
 

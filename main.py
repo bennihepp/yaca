@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.6
 
 if __name__ == '__main__':
 
     from src import main_gui
 
-    adc = main_gui.run()
+    main_gui.run()
 

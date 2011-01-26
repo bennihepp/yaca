@@ -6,7 +6,7 @@ import h5py
 import scipy.io
 
 
-from input_container import *
+from data_container import *
 
 
 
@@ -17,7 +17,7 @@ def import_hdf5_results(file):
     f = None
     try:
         f = h5py.File( file, mode='r' )
-        root = f[ 'APC_input' ]
+        root = f[ 'PhenoNice_input' ]
 
         print 'reading pickle stream ...'
         pickleStream_dataset = root[ 'pickleStream' ]
@@ -30,24 +30,24 @@ def import_hdf5_results(file):
         sio = cStringIO.StringIO( pickleStr )
         up = cPickle.Unpickler( sio )
         print 'unpickling object...'
-        adc = up.load()
+        pdc = up.load()
         sio.close()
 
         print 'reading image features table...'
         imgFeature_dataset = root['imgFeatures']
-        adc.imgFeatures = numpy.empty( imgFeature_dataset.shape )
-        imgFeature_dataset.read_direct( adc.imgFeatures )
+        pdc.imgFeatures = numpy.empty( imgFeature_dataset.shape )
+        imgFeature_dataset.read_direct( pdc.imgFeatures )
 
         print 'reading object features table...'
         objFeature_dataset = root['objFeatures']
-        adc.objFeatures = numpy.empty( objFeature_dataset.shape )
-        objFeature_dataset.read_direct( adc.objFeatures )
+        pdc.objFeatures = numpy.empty( objFeature_dataset.shape )
+        objFeature_dataset.read_direct( pdc.objFeatures )
 
         """
         print 'reading mat...'
         d = scipy.io.loadmat(file + '.mat')
-        adc.objFeatures = d['objFeatures']
-        adc.imgFeatures = d['imgFeatures']
+        pdc.objFeatures = d['objFeatures']
+        pdc.imgFeatures = d['imgFeatures']
         """
 
     finally:
@@ -56,11 +56,11 @@ def import_hdf5_results(file):
 
     print 'imported data from HDF5 file'
 
-    return adc
+    return pdc
 
 
 
-def export_hdf5_results(file, adc):
+def export_hdf5_results(file, pdc):
 
     print 'exporting results to HDF5 file...'
 
@@ -68,19 +68,19 @@ def export_hdf5_results(file, adc):
     try:
         print 'writing hdf5...'
         f = h5py.File( file, mode='w' )
-        root = f.create_group( 'APC_input' )
+        root = f.create_group( 'PhenoNice_input' )
 
         print 'pickling object...'
         sio = cStringIO.StringIO()
         p = cPickle.Pickler( sio )
 
-        imgFeatures = adc.imgFeatures
-        objFeatures = adc.objFeatures
-        adc.imgFeatures = None
-        adc.objFeatures = None
-        p.dump( adc )
-        adc.objFeatures = objFeatures
-        adc.imgFeatures = imgFeatures
+        imgFeatures = pdc.imgFeatures
+        objFeatures = pdc.objFeatures
+        pdc.imgFeatures = None
+        pdc.objFeatures = None
+        p.dump( pdc )
+        pdc.objFeatures = objFeatures
+        pdc.imgFeatures = imgFeatures
 
         pickleStr = sio.getvalue()
         sio.close()
@@ -91,16 +91,16 @@ def export_hdf5_results(file, adc):
         pickleStream_dataset = root.create_dataset('pickleStream', dtype=numpy.uint8, data=pickleData)
 
         print 'writing image feature table...'
-        imgFeature_dataset = root.create_dataset('imgFeatures', data=adc.imgFeatures)
+        imgFeature_dataset = root.create_dataset('imgFeatures', data=pdc.imgFeatures)
 
         print 'writing object feature table...'
-        objFeature_dataset = root.create_dataset('objFeatures', data=adc.objFeatures)
+        objFeature_dataset = root.create_dataset('objFeatures', data=pdc.objFeatures)
 
         """
         print 'writing mat...'
         d = {}
-        d['imgFeatures'] = adc.imgFeatures
-        d['objFeatures'] = adc.objFeatures
+        d['imgFeatures'] = pdc.imgFeatures
+        d['objFeatures'] = pdc.objFeatures
         scipy.io.savemat(file, d)
         """
 
@@ -123,12 +123,18 @@ import os
 from input_container import *
 
 
-class adc_hybrid_format(object):
+class pdc_hybrid_format(object):
 
-    SHM_TEMP_FILENAME = '/dev/shm/apc-hybrid-tmp-file-%d'
+    SHM_TEMP_DIRECTORY = '/dev/shm'
+    if not os.path.isdir( SHM_TEMP_DIRECTORY ):
+        SHM_TEMP_DIRECTORY = '/tmp/shm'
+        if not os.path.isdir( SHM_TEMP_DIRECTORY ):
+            os.mkdir( SHM_TEMP_DIRECTORY )
 
-    def __init__(self, adc):
-        self.adc = adc
+    SHM_TEMP_FILENAME = SHM_TEMP_DIRECTORY + '/phenonice-hybrid-tmp-file-%d'
+
+    def __init__(self, pdc):
+        self.pdc = pdc
         self.hdf5 = None
         fileUsed = True
         while fileUsed:
@@ -138,16 +144,16 @@ class adc_hybrid_format(object):
 
     def make_hybrid(self, remove_tmp_file = True):
 
-        OBJECT_PROPERTY_IDS = self.adc.objects[0].properties.keys()
+        OBJECT_PROPERTY_IDS = self.pdc.objects[0].properties.keys()
 
         dt = h5py.new_vlen( str )
         objectProperties_dataset = root.create_dataset(
             'objectProperties',
-            ( len(adc.objects), len(OBJECT_PROPERTY_IDS) ),
+            ( len(pdc.objects), len(OBJECT_PROPERTY_IDS) ),
             dtype=dt
         )
-        for i in xrange( len( adc.objects ) ):
-            obj = adc.objects[i]
+        for i in xrange( len( pdc.objects ) ):
+            obj = pdc.objects[i]
             objectProperties_dataset[i] = obj.properties.values()
 
         f = None
@@ -156,15 +162,15 @@ class adc_hybrid_format(object):
             f = h5py.File( self.tempfile, mode='w' )
     
             print 'exporting results to HDF5 file'
-            root = f.create_group('APC_input')
+            root = f.create_group('PhenoNice_input')
     
             print 'exporting image features...'
-            #imgFeature_dataset = root.create_dataset('imgFeatures', data=self.adc.imgFeatures)
-            self.adc.imgFeatures = None
+            #imgFeature_dataset = root.create_dataset('imgFeatures', data=self.pdc.imgFeatures)
+            self.pdc.imgFeatures = None
     
             print 'exporting object features...'
-            #objFeature_dataset = root.create_dataset('objFeatures', data=self.adc.objFeatures)
-            self.adc.objFeatures = None
+            #objFeature_dataset = root.create_dataset('objFeatures', data=self.pdc.objFeatures)
+            self.pdc.objFeatures = None
 
             f.close()
 
@@ -209,17 +215,17 @@ class adc_hybrid_format(object):
             f = h5py.File( self.tempfile, mode='r' )
 
             print 'importing results from HDF5 file'
-            root = f[ 'APC_input' ]
+            root = f[ 'PhenoNice_input' ]
 
             print 'importing image features...'
             #imgFeature_dataset = root['imgFeatures']
-            #self.adc.imgFeatures = numpy.empty( imgFeature_dataset.shape )
-            #imgFeature_dataset.read_direct( self.adc.imgFeatures )
+            #self.pdc.imgFeatures = numpy.empty( imgFeature_dataset.shape )
+            #imgFeature_dataset.read_direct( self.pdc.imgFeatures )
     
             print 'importing object features...'
             #objFeature_dataset = root['objFeatures']
-            #self.adc.objFeatures = numpy.empty( objFeature_dataset.shape )
-            #objFeature_dataset.read_direct( self.adc.objFeatures )
+            #self.pdc.objFeatures = numpy.empty( objFeature_dataset.shape )
+            #objFeature_dataset.read_direct( self.pdc.objFeatures )
 
         finally:
             if f:
@@ -244,21 +250,21 @@ def import_hybrid_results(file):
     finally:
         if f:
             f.close()
-    return hybrid.adc
+    return hybrid.pdc
 
 
 
 
-def export_hybrid_results(file, adc):
+def export_hybrid_results(file, pdc):
 
     print 'exporting results to HYBRID file...'
 
-    objFeatures = adc.objFeatures
-    imgFeatures = adc.imgFeatures
+    objFeatures = pdc.objFeatures
+    imgFeatures = pdc.imgFeatures
     f = None
 
     try:
-        hybrid = adc_hybrid_format(adc)
+        hybrid = pdc_hybrid_format(pdc)
         hybrid.make_hybrid( False )
         f = open(file, 'w')
         p = cPickle.Pickler(f)
@@ -268,6 +274,6 @@ def export_hybrid_results(file, adc):
     finally:
         if f:
             f.close()
-        adc.objFeatures = objFeatures
-        adc.imgFeatures = imgFeatures
+        pdc.objFeatures = objFeatures
+        pdc.imgFeatures = imgFeatures
 """

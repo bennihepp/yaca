@@ -1,15 +1,31 @@
 import sys
 import os
 
-import sys
-
 TRY_OPENGL = True
 
+simple_ui = False
 project_file = None
 start_pipeline = False
 img_symlink_dir = False
 
 skip_next = 0
+
+
+def print_help():
+
+    print """Usage: python %s [options]
+Possible options:
+  --simple-ui                   Use a simplified user interface (e.g. for presentation)
+  --full-ui                     Use the full user interface (default)
+  --opengl                      Use OpenGL for rendering (default)
+  --no-opengl                   Don't use OpenGL for rendering
+  --project-file <filename>     Load specified pipeline file
+  --run-filtering               Run quality control and pre-filtering after loading
+                                of the project file
+  --img-symlinks <path>         Create symlinks of the images within <path>,
+                                the filename will be the image-ID.
+""" % sys.argv[ 0 ]
+
 
 if len( sys.argv ) > 1:
     for i in xrange( 1, len( sys.argv ) ):
@@ -20,16 +36,29 @@ if len( sys.argv ) > 1:
             skip_next -= 1
             continue
 
-        if arg == '-opengl':
+        if arg == '--simple-ui':
+            simple_ui = True
+        elif arg == '--full-ui':
+            simple_ui = False
+        elif arg == '--opengl':
+            TRY_OPENGL = True
+        elif arg == '--no-opengl':
             TRY_OPENGL = False
-        elif arg == '-start':
+        elif arg == '--run-filtering':
             start_pipeline = True
-        elif arg == '-img-symlinks':
+        elif arg == '--img-symlinks':
             img_symlink_dir= sys.argv[ i+1 ]
             skip_next = 1
-        elif arg == '-project-file':
+        elif arg == '--project-file':
             project_file = sys.argv[ i+1 ]
             skip_next = 1
+        elif arg == '--help':
+            print_help()
+            sys.exit( 0 )
+        else:
+            print 'Unknown option: %s' % arg
+            print_help()
+            sys.exit( 1 )
 
 
 from PyQt4.QtCore import *
@@ -38,13 +67,34 @@ from PyQt4.QtGui import *
 from gui.main_window import MainWindow
 
 
-#g = gui_window.GUI(adc, objFeatures, mahalPoints, mahalFeatureNames, channelDescription, partition, sorting, inverse_sorting, clusters, cluster_count, sys.argv)
+#g = gui_window.GUI(pdc, objFeatures, mahalPoints, mahalFeatureNames, channelDescription, partition, sorting, inverse_sorting, clusters, cluster_count, sys.argv)
 
 def run():
 
+    if img_symlink_dir:
+
+        print 'creating image symlinks...'
+
+        if not os.path.isdir( img_symlink_dir ):
+            os.mkdir( img_symlink_dir )
+
+        for i in xrange( len( pdc.images ) ):
+
+            img = pdc.images[ i ]
+            imgId = img.rowId
+            imgFiles = img.imageFiles
+
+            for name,path in imgFiles:
+                symlink_name = '%04d_%s.tif' % ( imgId, name )
+                symlink_path = os.path.join( img_symlink_dir, symlink_name )
+                os.symlink( path, symlink_path )
+
+        print 'finished creating image symlinks'
+
+
     app = QApplication( sys.argv )
 
-    mainwindow = MainWindow()
+    mainwindow = MainWindow( simple_ui )
     mainwindow.show()
 
     if project_file:
@@ -55,35 +105,19 @@ def run():
     app.exec_()
     mainwindow.close()
 
-    importer = mainwindow.importer
-    adc = importer.get_adc()
-
-    if img_symlink_dir:
-
-        if not os.path.isdir( img_symlink_dir ):
-            os.mkdir( img_symlink_dir )
-
-        for i in xrange( len( adc.images ) ):
-
-            img = adc.images[ i ]
-            imgId = img.rowId
-            imgFiles = img.imageFiles
-
-            for name,path in imgFiles:
-                symlink_name = '%04d_%s.tif' % ( imgId, name )
-                symlink_path = os.path.join( img_symlink_dir, symlink_name )
-                os.symlink( path, symlink_path )
+    """importer = mainwindow.importer
+    pdc = importer.get_pdc()
 
 
-    """for k,v in adc.images[0].properties.iteritems():
+    for k,v in pdc.images[0].properties.iteritems():
         print '%s=%s' % (k,v)
 
-    keys = adc.imgFeatureIds.keys()
+    keys = pdc.imgFeatureIds.keys()
     keys.sort()
     for k in keys:
-        id = adc.imgFeatureIds[ k ]
-        v = adc.imgFeatures[ 0 , id ]
+        id = pdc.imgFeatureIds[ k ]
+        v = pdc.imgFeatures[ 0 , id ]
         print '%s=%f' % (k,v)
 
-    return adc"""
+    return pdc"""
 

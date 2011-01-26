@@ -89,15 +89,15 @@ class ChannelDescriptionTab(QWidget):
 
     __OBJECT_NAME = 'ChannelDescription'
 
-    def __init__(self, adc, parent=None):
+    def __init__(self, pdc, parent=None):
 
         QWidget.__init__( self, parent )
 
-        self.adc = adc
+        self.pdc = pdc
         
         self.names = []
-        for i in xrange( len( adc.images[0].imageFiles ) ):
-            name,path = adc.images[0].imageFiles[i]
+        for i in xrange( len( pdc.images[0].imageFiles ) ):
+            name,path = pdc.images[0].imageFiles[i]
             self.names.append( name )
         
         self.channelDescription = {}
@@ -136,7 +136,12 @@ class ChannelDescriptionTab(QWidget):
             self.vbox1.removeWidget( self.cdws[ 0 ] )
             del self.cdws[ 0 ]
 
-        channelDescription, channelMapping = value
+        if value:
+            channelDescription, channelMapping = value
+        else:
+            channelDescription = {}
+            channelMapping = {}
+
         names = channelDescription.keys()
         descrs = channelDescription.values()
 
@@ -146,11 +151,14 @@ class ChannelDescriptionTab(QWidget):
         for name,descr in channelDescription.iteritems():
             cdw = ChannelDescriptionWidget( name )
             self.cdws.append( cdw )
-            self.channelDescription[ name ] = name
+            self.channelDescription[ name ] = descr
             self.connect( cdw, SIGNAL('change'), self.on_change_descr )
             self.vbox1.addWidget( cdw )
 
         tmp_d = { 'R':'Red', 'G':'Green', 'B':'Blue' }
+        for c in channelMapping:
+            if c not in tmp_d:
+                tmp_d[ c ] = channelMapping[ c ]
         for c in 'RGB':
             if c not in channelMapping:
                 channelMapping[ c ] = None
@@ -160,10 +168,10 @@ class ChannelDescriptionTab(QWidget):
         for k in keys:
             v = channelMapping[ k ]
             if v == None:
-                self.add_overlay( c, None, tmp_d[ c ] )
+                self.add_overlay( k, None, tmp_d[ k ] )
             else:
                 name = v
-                self.add_overlay( k, name, name )
+                self.add_overlay( k, name, tmp_d[ k ] )
 
         for cdw in self.cdws:
             descr = channelDescription[ cdw.name ]
@@ -228,8 +236,8 @@ class ChannelDescriptionTab(QWidget):
 
         self.vbox1 = QVBoxLayout()
         
-        for i in xrange( len( self.adc.images[0].imageFiles ) ):
-            name,path = self.adc.images[0].imageFiles[i]
+        for i in xrange( len( self.pdc.images[0].imageFiles ) ):
+            name,path = self.pdc.images[0].imageFiles[i]
             cdw = ChannelDescriptionWidget( name )
             self.cdws.append( cdw )
             self.channelDescription[ name ] = name

@@ -37,12 +37,14 @@ class ActionButton(QPushButton):
 
 class MainWindow(QMainWindow):
 
-    def __init__(self, parent=None):
+    def __init__(self, simple_ui=False, parent=None):
+
+        self.__simple_ui = simple_ui
 
         self.importer = importer.Importer()
 
         QMainWindow.__init__(self, parent)
-        self.setWindowTitle('APC Main')
+        self.setWindowTitle('Main')
 
         self.project_unsaved = False
 
@@ -120,7 +122,7 @@ class MainWindow(QMainWindow):
 
     def on_open_project(self):
         if self.project_saved():
-            file_choices = "APC Project file (*.apc *.yaml);;All files (*)"
+            file_choices = "Project file (*.phn *.yaml);;All files (*)"
     
             path = unicode(QFileDialog.getOpenFileName(self, 
                             'Open file', '', 
@@ -134,7 +136,7 @@ class MainWindow(QMainWindow):
             return False
 
     def on_save_project(self):
-        file_choices = "APC Project file (*.apc *.yaml);;All files (*)"
+        file_choices = "Project file (*.phn *.yaml);;All files (*)"
 
         path = unicode(QFileDialog.getSaveFileName(self, 
                         'Save file', '', 
@@ -152,7 +154,7 @@ class MainWindow(QMainWindow):
             self.close()
 
     def on_about(self):
-        msg = """ APC GUI """
+        msg = """ GUI """
         QMessageBox.about(self, "About", msg.strip())
 
 
@@ -199,13 +201,15 @@ class MainWindow(QMainWindow):
     
             try:
 
-                adc = self.importer.get_adc()
+                pdc = self.importer.get_pdc()
                 clusterConfiguration = self.clusterConfigurationTab.clusterConfiguration
 
-                self.pl = pipeline.Pipeline( adc, clusterConfiguration )
+                self.pl = pipeline.Pipeline( pdc, clusterConfiguration )
                 self.pl.connect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
                 self.pl.connect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
-                self.pl.start()
+                self.__quality_control_done = False
+                self.pl.start_quality_control()
+                #self.pl.start()
                 #pl.run( self.on_update_progress )
 
             except:
@@ -218,26 +222,37 @@ class MainWindow(QMainWindow):
 
     def on_pipeline_finished(self):
 
-        if self.pl.result:
-            self.statusBar().showMessage( 'Showing results window' )
-            print 'creating results window...'
-            channelMapping = self.channelDescriptionTab.channelMapping
-            channelDescription = self.channelDescriptionTab.channelDescription
-            self.results_window = ResultsWindow( self.pl, channelMapping, channelDescription )
-            self.results_window.show()
-    
-            self.progress_bar.setFormat( 'Idling...' )
-    
-            self.start_cancel_button.setText( 'Start' )
+        if self.pl.get_result():
+
+            if self.__quality_control_done:
+
+                self.statusBar().showMessage( 'Showing results window' )
+                print 'creating results window...'
+                channelMapping = self.channelDescriptionTab.channelMapping
+                channelDescription = self.channelDescriptionTab.channelDescription
+                self.results_window = ResultsWindow( self.pl, channelMapping, channelDescription, self.__simple_ui )
+                self.results_window.show()
+        
+                self.progress_bar.setFormat( 'Idling...' )
+        
+                self.start_cancel_button.setText( 'Perform cell selection' )
+
+                del self.pl
+
+            else:
+
+                self.__quality_control_done = True
+                self.pl.start_pre_filtering()
 
         else:
+
             self.statusBar().showMessage( 'Error while running pipeline' )
     
             self.progress_bar.setFormat( 'Idling...' )
     
-            self.start_cancel_button.setText( 'Start' )
+            self.start_cancel_button.setText( 'Perform cell selection' )
 
-        del self.pl
+            del self.pl
 
 
     def on_parameter_changed(self, module, param_name):
@@ -321,7 +336,7 @@ class MainWindow(QMainWindow):
 
                     for param in params:
 
-                        param_widget = parameter_widgets.create_widget( module, param, self.importer.get_adc() )
+                        param_widget = parameter_widgets.create_widget( module, param, self.importer.get_pdc() )
                         self.connect( param_widget, SIGNAL('parameterChanged'), self.on_parameter_changed )
             
                         layout.addWidget( param_widget )
@@ -342,17 +357,17 @@ class MainWindow(QMainWindow):
     
                     tab_widget.addTab( scrollarea, utils.get_module_descr( module ) )
 
-        if self.importer.get_adc() != None:
+        if self.importer.get_pdc() != None:
 
             if self.channelDescriptionTab == None:
                 self.channelDescriptionTab = ChannelDescriptionTab(
-                    self.importer.get_adc()
+                    self.importer.get_pdc()
                 )
                 tab_widget.addTab( self.channelDescriptionTab, 'Channels' )
 
             if self.clusterConfigurationTab == None:
                 self.clusterConfigurationTab = ClusterConfigurationTab(
-                    self.importer.get_adc()
+                    self.importer.get_pdc()
                 )
                 tab_widget.addTab( self.clusterConfigurationTab, 'Clustering configuration' )
 
@@ -360,11 +375,11 @@ class MainWindow(QMainWindow):
     def on_view_images(self):
         channelMapping = self.channelDescriptionTab.channelMapping
         channelDescription = self.channelDescriptionTab.channelDescription
-        adc = self.importer.get_adc()
-        self.image_viewer = GalleryWindow( adc.imgFeatureIds, channelMapping, channelDescription, True )
-        selectionIds = numpy.arange( len( adc.images ) )
-        pixmapFactory = ImagePixmapFactory( adc, channelMapping )
-        featureFactory = ImageFeatureTextFactory( adc )
+        pdc = self.importer.get_pdc()
+        self.image_viewer = GalleryWindow( pdc.imgFeatureIds, channelMapping, channelDescription, True )
+        selectionIds = numpy.arange( len( pdc.images ) )
+        pixmapFactory = ImagePixmapFactory( pdc, channelMapping )
+        featureFactory = ImageFeatureTextFactory( pdc )
         self.image_viewer.on_selection_changed( -1, selectionIds, pixmapFactory, featureFactory )
         self.image_viewer.show()
 
@@ -372,7 +387,7 @@ class MainWindow(QMainWindow):
 
         self.main_frame = QWidget()
 
-        self.start_cancel_button = QPushButton('Start')
+        self.start_cancel_button = QPushButton('Perform cell selection')
         self.start_cancel_button.setEnabled( False )
         self.connect( self.start_cancel_button, SIGNAL('clicked()'), self.on_start_cancel )
 
@@ -386,7 +401,6 @@ class MainWindow(QMainWindow):
 
         self.tab_widget = self.build_module_tab_widget()
 
-
         #
         # Layout with box sizers
         #
@@ -398,13 +412,14 @@ class MainWindow(QMainWindow):
 
         vbox = QVBoxLayout()
         vbox.addLayout( hbox1 )
-        vbox.addWidget( self.tab_widget, 1 )
+        if not self.__simple_ui:
+            vbox.addWidget( self.tab_widget, 1 )
 
         self.main_frame.setLayout( vbox )
         self.setCentralWidget( self.main_frame )
     
     def build_status_bar(self):
-        self.status_text = QLabel( 'Welcome to APC' )
+        self.status_text = QLabel( 'Main' )
         self.statusBar().addWidget(self.status_text, 1)
         
     def build_menu(self):        
@@ -456,3 +471,4 @@ class MainWindow(QMainWindow):
         if checkable:
             action.setCheckable(True)
         return action
+

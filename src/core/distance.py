@@ -5,6 +5,40 @@ import scipy.linalg
 
 
 
+def minkowski_dist(a, b, minkowski_p=2):
+
+	if len( a.shape ) == 1:
+		a = numpy.array( [ a ] )
+	if len( b.shape ) == 1:
+		b = numpy.array( [ b ] )
+
+	if minkowski_p == 2:
+	    return scipy.spatial.distance.cdist( a, b, 'euclidean' )
+	elif minkowski_p == 1:
+	    return scipy.spatial.distance.cdist( a, b, 'cityblock' )
+	else:
+	    return scipy.spatial.distance.cdist( a, b, 'minkowski', minkowski_p )
+
+def weighted_minkowski_dist(a, b, weights, minkowski_p=2):
+	wa = weights * a
+	wb = weights * b
+
+	return minkowski_dist( wa, wb, minkowski_p )
+
+def minkowski_cdist(A, B, minkowski_p=2):
+	if minkowski_p == 2:
+	    return scipy.spatial.distance.cdist( A, B, 'euclidean' )
+	elif minkowski_p == 1:
+	    return scipy.spatial.distance.cdist( A, B, 'cityblock' )
+	else:
+	    return scipy.spatial.distance.cdist( A, B, 'minkowski', minkowski_p )
+
+def weighted_minkowski_cdist(A, B, weights, minkowski_p=2):
+	wA = weights * A
+	wB = weights * B
+	return minkowski_cdist( wA, wB, minkowski_p )
+
+
 # Returns the covariance matrix of the passed observations.
 # observations is an MxN array/matrix whereas M is the number of
 # observations and N is the number of dimensions/features

@@ -1,0 +1,4 @@
+core/ contains all functionality that is not bound to the graphical interface
+core/ioutil/ contains defines the data structure and all funcionality for importing and exporting data
+
+gui/ contains everything that is only used for the graphical interface

@@ -1,11 +1,13 @@
 import sys, os, random
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-from PyQt4.QtOpenGL import *
 
 from ..main_gui import TRY_OPENGL
 
-from ..core.image_comparison import ImageComparer
+if TRY_OPENGL:
+	from PyQt4.QtOpenGL import *
+
+from ..gui.gui_utils import ImagePixmapFactory, ImageFeatureTextFactory
 
 import numpy
 import time
@@ -135,6 +137,7 @@ class GalleryChannelAdjuster(QGroupBox):
     def brightness_slider_changed(self, value):
         self.brightness_spinBox.setValue( value / 100.0 )
 
+
     def build_widget(self):
 
         self.connect( self, SIGNAL('clicked(bool)'), self.on_stateChanged )
@@ -157,11 +160,11 @@ class GalleryChannelAdjuster(QGroupBox):
 
         self.brightness_spinBox = QDoubleSpinBox()
         self.brightness_spinBox.setMinimum( 0.0 )
-        self.brightness_spinBox.setMaximum( 10.0 )
+        self.brightness_spinBox.setMaximum( 5.0 )
         self.brightness_spinBox.setValue( 1.0 )
         self.brightness_slider = QSlider(Qt.Horizontal)
         self.brightness_slider.setMinimum( 0 )
-        self.brightness_slider.setMaximum( 1000 )
+        self.brightness_slider.setMaximum( 500 )
         self.brightness_slider.setValue( 100 )
         self.brightness_slider.setTracking( False )
         QObject.connect( self.brightness_spinBox, SIGNAL('valueChanged(double)'), self.brightness_spinBox_changed )
@@ -238,7 +241,7 @@ if TRY_OPENGL:
 
 class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
-    __pyqtSignals__ = ('pixmapSelected',)
+    __pyqtSignals__ = ('pixmapSelected', 'pixmapDragged')
 
     PIXMAP_SPACING = 8
 
@@ -380,12 +383,12 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
                 index = r * self.columns + c
 
-                if index < len( self.pixmaps ):
-
+                if len( self.pixmaps ) > index:
+                
                     pixmap = self.pixmaps[ index ]
                     if pixmap != None:
                         self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
-
+            
                     if self.pixmap_texts and len( self.pixmap_texts ) > index:
                         texts = self.pixmap_texts[ index ]
                         if texts != None:
@@ -410,12 +413,26 @@ class GalleryWindow(QWidget):
     MIN_PIXMAP_SIZE = 64
     MAX_PIXMAP_SIZE = 256
 
-    TMP_IMAGE_FILENAME_TEMPLATE = '/dev/shm/adc-tmp-image-file-%s-%s-%s.tiff'
+    TMP_IMAGE_DIRECTORY = '/dev/shm'
+    if not os.path.isdir( TMP_IMAGE_DIRECTORY ):
+        TMP_IMAGE_DIRECTORY = '/tmp/shm'
+        if not os.path.isdir( TMP_IMAGE_DIRECTORY ):
+            os.mkdir( TMP_IMAGE_DIRECTORY )
+
+    TMP_IMAGE_FILENAME_EXTENSION = 'pbm'
+    if 'tif' in QImageReader.supportedImageFormats():
+        TMP_IMAGE_FILENAME_EXTENSION = 'tiff'
+
+    TMP_IMAGE_FILENAME_TEMPLATE = TMP_IMAGE_DIRECTORY + '/pdc-tmp-image-file-%s-%s-%s.' + TMP_IMAGE_FILENAME_EXTENSION
 
 
     def __init__(self, featureDescription, channelMapping, channelDescription, singleImage=False, parent=None):
         super(QWidget,self).__init__(parent)
-        self.setWindowTitle('APC Gallery')
+
+        if singleImage:
+            self.setWindowTitle('Image Viewer')
+        else:
+            self.setWindowTitle('Cell Gallery')
 
         self.singleImage = singleImage
 
@@ -441,7 +458,7 @@ class GalleryWindow(QWidget):
         #self.setSizePolicy( QSizePolicy( QSizePolicy.Fixed, QSizePolicy.Fixed ) )
 
         #self.create_menu()
-        self.create_frame()
+        self.build_widget()
 
     def cmp_channels( self, c1, c2 ):
         if c1 == c2:
@@ -508,63 +525,37 @@ class GalleryWindow(QWidget):
         return ImageChops.darker( img, img_mask )
 
     def on_pixmap_selected(self, index, row, column, event):
-        i = self.start_i + index
-        pixmapId = self.idMapping[ i ]
-        if self.random and index == 0 and self.focus_i >= 0:
-            pixmapId = self.focus_i
-        id1 = self.selectionIds[ pixmapId ]
-        ids = []
-        for i in xrange( self.start_i, self.stop_i ):
-            pixmapId = self.idMapping[ i ]
-            if self.random and i == self.start_i and self.focus_i >= 0:
-                pixmapId = self.focus_i
-            ids.append( self.selectionIds[ pixmapId ] )
+        if not self.singleImage:
+            try:
+                self.singleImageViewer
+            except:
+                self.singleImageViewer = None
 
-        imgs = []
+            pdc = self.pixmapFactory.pdc
 
-        img1 = self.load_cell_image( int( id1 ) )
-        for id2 in ids:
-            img2 = self.load_cell_image( int( id2 ) )
-            imgs.append( img2 )
+            # TODO: this is very dirty
+            imgId = int( self.pixmapFactory.features[ self.selectionIds[ self.idMapping[ self.start_i + index ] ] , pdc.objImageFeatureId ] )
+            selectionIds = numpy.array( [ imgId ] )
+            focusId = selectionIds[ 0 ]
 
-        ic = ImageComparer()
+            pixmapFactory = ImagePixmapFactory( pdc, self.channelMapping )
+            featureFactory = ImageFeatureTextFactory( pdc )
 
-        results = ic.comp_imgs( img1, imgs, method='MSE' )
+            if self.singleImageViewer == None:
+                self.singleImageViewer = GalleryWindow(
+                                            pdc.imgFeatureIds,
+                                            self.channelMapping,
+                                            self.channelDescription,
+                                            True
+                )
 
-        print 'results:'
-        for r in xrange( self.rows ):
-            sys.stdout.write( '  ' )
-            for c in xrange( self.columns ):
-                sys.stdout.write( '%03.3f \t ' % results[ r * self.columns + c ] )
-            sys.stdout.write( '\n' )
-        sys.stdout.write( '\n' )
-        sys.stdout.flush()
-
-        results,shifts = ic.comp_imgs( img1, imgs, method='MSE_optimized' )
-
-        print 'shifts:'
-        for r in xrange( self.rows ):
-            sys.stdout.write( '  ' )
-            for c in xrange( self.columns ):
-                sys.stdout.write( '(%02d,%02d) \t ' % shifts[ r * self.columns + c ] )
-            sys.stdout.write( '\n' )
-        sys.stdout.write( '\n' )
-        sys.stdout.flush()
-
-        print 'results:'
-        for r in xrange( self.rows ):
-            sys.stdout.write( '  ' )
-            for c in xrange( self.columns ):
-                sys.stdout.write( '%03.3f \t ' % results[ r * self.columns + c ] )
-            sys.stdout.write( '\n' )
-        sys.stdout.write( '\n' )
-        sys.stdout.flush()
-
-        self.gw = GalleryWindow( self.featureDescription, self.channelMapping, self.channelDescription )
-        from gui_utils import PixmapFactory
-        pixmapFactory = PixmapFactory( imgs )
-        self.gw.on_selection_changed( -1, range( len( imgs ) ), pixmapFactory, None )
-        self.gw.show()
+            self.singleImageViewer.on_selection_changed(
+                    focusId,
+                    selectionIds,
+                    pixmapFactory,
+                    featureFactory
+            )
+            self.singleImageViewer.showMaximized()
 
 
     def on_reload_images(self, start_i, stop_i, focus_i=-1):
@@ -978,13 +969,26 @@ class GalleryWindow(QWidget):
         if self.selectionIds != None:
             self.on_reload_images( self.start_i, self.stop_i, self.focus_i )
 
-    def create_frame(self):
+
+    def update_caption(self, caption):
+
+        if caption == None:
+            self.caption_label.hide()
+
+        else:
+            self.caption_label.setText( caption )
+            self.caption_label.show()
+
+    def build_widget(self):
         #self.grid = QGridLayout()
         #self.grid.setSpacing(self.GRID_SPACING)
 
         if self.singleImage:
             self.pixmap_width = -1
             self.pixmap_height = -1
+
+        self.caption_label = QLabel()
+        self.update_caption( None )
 
         self.pixmaparea = GalleryPixmapArea()
         self.connect( self.pixmaparea, SIGNAL('pixmapSelected'), self.on_pixmap_selected )
@@ -1095,6 +1099,7 @@ class GalleryWindow(QWidget):
         self.statusbar.addPermanentWidget( self.progressbar, 1 )
 
         vbox = QVBoxLayout()
+        vbox.addWidget( self.caption_label )
         vbox.addLayout(hbox1)
         vbox.addWidget(hsplitter, 1)
         vbox.addWidget(self.statusbar)

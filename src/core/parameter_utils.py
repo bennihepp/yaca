@@ -241,7 +241,7 @@ def load_module_configuration( filename ):
             file.close()
 
     if ( not 'modules' in yaml_container ) or ( not 'objects' in yaml_container ):
-        raise Exception( 'Invalid APCgui configuration file' )
+        raise Exception( 'Invalid PhenoNice configuration file' )
 
 
     module_container = yaml_container[ 'modules' ]
@@ -253,7 +253,7 @@ def load_module_configuration( filename ):
                 state = module_container[ module ][ 'state' ]
                 parameters = module_container[ module ][ 'parameters' ]
             except:
-                raise Exception( 'Invalid APCgui configuration file' )
+                raise Exception( 'Invalid PhenoNice configuration file' )
 
             for param_name in parameters:
     
@@ -280,7 +280,7 @@ def load_module_configuration( filename ):
             try:
                 attributes = object_container[ object ]
             except:
-                raise Exception( 'Invalid APCgui configuration file' )
+                raise Exception( 'Invalid PhenoNice configuration file' )
     
             for attr_name in attributes:
     

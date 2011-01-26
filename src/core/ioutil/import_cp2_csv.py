@@ -4,7 +4,7 @@ import sys
 import os
 import traceback
 
-from input_container import *
+from data_container import *
 
 
 
@@ -72,7 +72,7 @@ def default_treatment_extractor( row, column_names ):
 
 
 
-def init_adc(adc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes):
+def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes):
 
     # create object_prefixes
     objects_prefixes = list( object_file_postfixes )
@@ -84,17 +84,17 @@ def init_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
             s = s + '_'
         objects_prefixes[ i ] = s
 
-    # write meta information for images into adc
+    # write meta information for images into pdc
     img,icn,ict = image_data
     for i in xrange( len( ict ) ):
         if ict[i] == float:
-            n = len( adc.imgFeatureIds )
-            adc.imgFeatureIds[ icn[i] ] = n
+            n = len( pdc.imgFeatureIds )
+            pdc.imgFeatureIds[ icn[i] ] = n
 
 
     object_column_types = []
 
-    # combine meta-information about the objects into adc
+    # combine meta-information about the objects into pdc
     for k in xrange( len( object_data ) ):
 
         object_column_types.append( object_data[ k ][2] )
@@ -103,8 +103,8 @@ def init_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
         for i in xrange( len(oct) ):
             if object_column_types[ k ][ i ] == float:
                 if oct[i] == float:
-                    n = len( adc.objFeatureIds )
-                    adc.objFeatureIds[ objects_prefixes[k] + ocn[i] ] = n
+                    n = len( pdc.objFeatureIds )
+                    pdc.objFeatureIds[ objects_prefixes[k] + ocn[i] ] = n
                 else:
                     object_column_types[ k ][i] = str
 
@@ -112,37 +112,37 @@ def init_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
 
     # check if we have to provide a imageId-feature for the images
     working_dict[ 'img_image_id_feature_is_virtual' ] = False
-    if not adc.imgFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
-        adc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( adc.imgFeatureIds )
-        adc.imgImageFeatureId = adc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ]
+    if not pdc.imgFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
+        pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
+        pdc.imgImageFeatureId = pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ]
         working_dict[ 'img_image_id_feature_is_virtual' ] = True
 
     # check if we have to provide a virtual treatmentId-feature for the images
     working_dict[ 'img_treatment_id_feature_is_virtual' ] = False
-    if not adc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
-        adc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( adc.imgFeatureIds )
-        adc.imgTreatmentFeatureId = adc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+    if not pdc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
+        pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
+        pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
         working_dict[ 'img_treatment_id_feature_is_virtual' ] = True
 
     # check if we have to provide a virtual objectId-feature for the objects
     working_dict[ 'obj_object_id_feature_is_virtual' ] = False
-    if not adc.objFeatureIds.has_key( OBJECT_ID_FEATURE_NAME ):
-        adc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ] = len( adc.objFeatureIds )
-        adc.objObjectFeatureId = adc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ]
+    if not pdc.objFeatureIds.has_key( OBJECT_ID_FEATURE_NAME ):
+        pdc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        pdc.objObjectFeatureId = pdc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ]
         working_dict[ 'obj_object_id_feature_is_virtual' ] = True
 
     # check if we have to provide a virtual imageId-feature for the objects
     working_dict[ 'obj_image_id_feature_is_virtual' ] = False
-    if not adc.objFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
-        adc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( adc.objFeatureIds )
-        adc.objImageFeatureId = adc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ]
+    if not pdc.objFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
+        pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        pdc.objImageFeatureId = pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ]
         working_dict[ 'obj_image_id_feature_is_virtual' ] = True
 
     # check if we have to provide a virtual treatmentId-feature for the objects
     working_dict[ 'obj_treatment_id_feature_is_virtual' ] = False
-    if not adc.objFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
-        adc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( adc.objFeatureIds )
-        adc.objTreatmentFeatureId = adc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+    if not pdc.objFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
+        pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
         working_dict[ 'obj_treatment_id_feature_is_virtual' ] = True
 
 
@@ -150,71 +150,71 @@ def init_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
 IMAGE_ARRAY_BLOCKSIZE = 8
 OBJECT_ARRAY_BLOCKSIZE = 8 * 256
 
-def update_adc(adc, image_data, object_data):
+def update_pdc(pdc, image_data, object_data):
 
     # if necessary, create feature-tables
 
-    if adc.imgFeatures == None:
-        adc.imgFeatures = numpy.empty( ( 0 , len( adc.imgFeatureIds ) ) )
+    if pdc.imgFeatures == None:
+        pdc.imgFeatures = numpy.empty( ( 0 , len( pdc.imgFeatureIds ) ) )
 
-    if adc.objFeatures == None:
-        adc.objFeatures = numpy.empty( ( 0 , len( adc.objFeatureIds ) ) )
+    if pdc.objFeatures == None:
+        pdc.objFeatures = numpy.empty( ( 0 , len( pdc.objFeatureIds ) ) )
 
     # if necessary, update size of feature-tables
 
     num_of_new_images = len( image_data[0] )
-    image_table_shape = list( adc.imgFeatures.shape )
-    if image_table_shape[0] < ( len( adc.images ) + num_of_new_images ):
+    image_table_shape = list( pdc.imgFeatures.shape )
+    if image_table_shape[0] < ( len( pdc.images ) + num_of_new_images ):
         image_table_shape[0] += max( num_of_new_images, IMAGE_ARRAY_BLOCKSIZE )
-        adc.imgFeatures.resize( image_table_shape )
+        pdc.imgFeatures.resize( image_table_shape )
 
     num_of_new_objects = len( object_data[0][0] )
-    object_table_shape = list( adc.objFeatures.shape )
-    if object_table_shape[0] < ( len( adc.objects ) + num_of_new_objects ):
+    object_table_shape = list( pdc.objFeatures.shape )
+    if object_table_shape[0] < ( len( pdc.objects ) + num_of_new_objects ):
         object_table_shape[0] += max( num_of_new_objects, OBJECT_ARRAY_BLOCKSIZE )
-        adc.objFeatures.resize( object_table_shape )
+        pdc.objFeatures.resize( object_table_shape )
 
 
 
-def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes,
+def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes,
              image_id_extractor, image_files_extractor, object_position_extractor, treatment_extractor):
 
-    if len( adc.images ) <= 0:
-        init_adc( adc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes )
+    if len( pdc.images ) <= 0:
+        init_pdc( pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes )
 
     # update feature-tables
-    update_adc( adc, image_data, object_data )
+    update_pdc( pdc, image_data, object_data )
 
     object_column_types = working_dict[ 'object_column_types' ]
 
 
-    # fill apc_data_structure
+    # fill phenonice_data_structure
 
     images,image_column_names,image_column_types = image_data
 
     o0,ocn,oct = object_data[0]
 
-    old_num_of_images = len( adc.images )
+    old_num_of_images = len( pdc.images )
 
     for i in xrange( len( images ) ):
 
-        img = apc_data_image()
-        img.rowId = len( adc.images )
+        img = phenonice_data_image()
+        img.rowId = len( pdc.images )
 
         try:
             treatment_name = treatment_extractor( images[i], image_column_names )
-            if not adc.treatmentByName.has_key(treatment_name):
-                treatment = apc_data_treatment( treatment_name )
-                treatment.rowId = len( adc.treatments )
-                adc.treatmentByName[treatment_name] = len( adc.treatments )
-                adc.treatments.append( treatment )
+            if not pdc.treatmentByName.has_key(treatment_name):
+                treatment = phenonice_data_treatment( treatment_name )
+                treatment.rowId = len( pdc.treatments )
+                pdc.treatmentByName[treatment_name] = len( pdc.treatments )
+                pdc.treatments.append( treatment )
                 img.treatment = treatment
             else:
-                img.treatment = adc.treatments[ adc.treatmentByName[ treatment_name ] ]
+                img.treatment = pdc.treatments[ pdc.treatmentByName[ treatment_name ] ]
         except Exception,e:
             img.state = 'no_treatment'
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            adc.errors.append( apc_data_error( e, tb, img ) )
+            pdc.errors.append( phenonice_data_error( e, tb, img ) )
             raise
 
         try:
@@ -222,7 +222,7 @@ def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
         except Exception,e:
             img.state = 'no_image_files'
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            adc.errors.append( apc_data_error( e, tb, img ) )
+            pdc.errors.append( phenonice_data_error( e, tb, img ) )
             raise
 
         n = 0
@@ -232,23 +232,23 @@ def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
             else:
                 v1 = images[i]
                 v2 = float( v1[j] )
-                q = adc.imgFeatures[img.rowId]
-                adc.imgFeatures[img.rowId][n] = v2
-                #adc.imgFeatures[img.rowId][n] = float( images[i][j] )
+                q = pdc.imgFeatures[img.rowId]
+                pdc.imgFeatures[img.rowId][n] = v2
+                #pdc.imgFeatures[img.rowId][n] = float( images[i][j] )
                 n += 1
 
         if working_dict[ 'img_image_id_feature_is_virtual' ]:
-            adc.imgFeatures[img.rowId][ adc.imgImageFeatureId ] = img.rowId
+            pdc.imgFeatures[img.rowId][ pdc.imgImageFeatureId ] = img.rowId
 
         if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
-            adc.imgFeatures[img.rowId][ adc.imgTreatmentFeatureId ] = img.treatment.rowId
+            pdc.imgFeatures[img.rowId][ pdc.imgTreatmentFeatureId ] = img.treatment.rowId
 
-        adc.images.append(img)
+        pdc.images.append(img)
 
     for i in xrange( len(o0) ):
 
-        obj = apc_data_object()
-        obj.rowId = len( adc.objects )
+        obj = phenonice_data_object()
+        obj.rowId = len( pdc.objects )
 
         found_img_id = False
         found_obj_position = False
@@ -260,7 +260,7 @@ def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
 
             try:
                 image_id = image_id_extractor( o[i], ocn ) + old_num_of_images
-                obj.image = adc.images[ image_id ]
+                obj.image = pdc.images[ image_id ]
                 found_img_id = True
             except:
                 pass
@@ -273,7 +273,7 @@ def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
 
             for j in xrange( len( oct ) ):
                 if object_column_types[ k ][ j ] == float:
-                    adc.objFeatures[obj.rowId][n] = float( o[i][j] )
+                    pdc.objFeatures[obj.rowId][n] = float( o[i][j] )
                     n += 1
                 #else:
                 #    obj.properties[ ocn[j] ] = o[i][j]
@@ -282,30 +282,30 @@ def fill_adc(adc, working_dict, image_data, object_data, image_file_postfix, obj
             obj.state = 'no image'
             e = Exception( 'Unable to extract image id' )
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            adc.errors.append( apc_data_error( e, tb, obj ) )
+            pdc.errors.append( phenonice_data_error( e, tb, obj ) )
             raise e
         if not found_obj_position:
             obj.state = 'no_position'
             e = Exception( 'Unable to extract object position' )
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            adc.errors.append( apc_data_error( e, tb, img ) )
+            pdc.errors.append( phenonice_data_error( e, tb, img ) )
             raise e
 
 
         if working_dict[ 'obj_object_id_feature_is_virtual' ]:
-            adc.objFeatures[ obj.rowId , adc.objObjectFeatureId ] = obj.rowId
+            pdc.objFeatures[ obj.rowId , pdc.objObjectFeatureId ] = obj.rowId
 
         if working_dict[ 'obj_image_id_feature_is_virtual' ]:
-            adc.objFeatures[ obj.rowId , adc.objImageFeatureId ] = obj.image.rowId
+            pdc.objFeatures[ obj.rowId , pdc.objImageFeatureId ] = obj.image.rowId
 
         if working_dict[ 'obj_treatment_id_feature_is_virtual' ]:
-            adc.objFeatures[ obj.rowId , adc.objTreatmentFeatureId ] = obj.image.treatment.rowId
+            pdc.objFeatures[ obj.rowId , pdc.objTreatmentFeatureId ] = obj.image.treatment.rowId
 
-        adc.objects.append(obj)
+        pdc.objects.append(obj)
 
 
 
-def import_cp2_csv_results_recursive(path, adc, working_dict, image_file_postfix, object_file_postfixes,
+def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix, object_file_postfixes,
                                      csv_delimiter, csv_extension,
                                      image_id_extractor=default_image_id_extractor,
                                      image_files_extractor=default_image_files_extractor,
@@ -328,7 +328,7 @@ def import_cp2_csv_results_recursive(path, adc, working_dict, image_file_postfix
             #print 'recursing into %s' % file
             tmp_path = os.path.join( path, file )
             num_of_images,num_of_objects = import_cp2_csv_results_recursive(
-                                              tmp_file, adc, working_dict,
+                                              tmp_file, pdc, working_dict,
                                               image_file_postfix, object_file_postfixes,
                                               csv_delimiter, csv_extension,
                                               image_id_extractor,
@@ -373,8 +373,8 @@ def import_cp2_csv_results_recursive(path, adc, working_dict, image_file_postfix
                             if ( len(o) != len(o0) ) or ( len(ocn) != len(oct) ):
                                 raise Exception( 'invalid objects input files' )
 
-                        fill_adc(
-                                adc, working_dict,
+                        fill_pdc(
+                                pdc, working_dict,
                                 image_data, object_data,
                                 image_file_postfix, object_file_postfixes,
                                 image_id_extractor,
@@ -391,7 +391,7 @@ def import_cp2_csv_results_recursive(path, adc, working_dict, image_file_postfix
     return current_num_of_images, current_num_of_objects
 
 # Import results (CSV-files) as exported from CellProfiler2.
-# Returns an apc_data_container.
+# Returns an phenonice_data_container.
 # Input parameters:
 #   path: path in which to look for .csv files
 #   images_file_postfix: postfix of the .csv files describing the images
@@ -407,13 +407,13 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
     print 'importing results'
 
     # create data container
-    adc = apc_data_container()
+    pdc = phenonice_data_container()
 
     # recurse into all subfolders
 
     working_dict = {}
 
-    num_of_images,num_of_objects = import_cp2_csv_results_recursive( path, adc, working_dict,
+    num_of_images,num_of_objects = import_cp2_csv_results_recursive( path, pdc, working_dict,
                                                                      image_file_postfix, object_file_postfixes,
                                                                      csv_delimiter, csv_extension,
                                                                      image_id_extractor,
@@ -423,26 +423,26 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
 
     del working_dict
 
-    if ( len( adc.images ) != num_of_images ) or ( len( adc.objects ) != num_of_objects ):
+    if ( len( pdc.images ) != num_of_images ) or ( len( pdc.objects ) != num_of_objects ):
         raise Exception( 'Something went wrong when importing the data' )
 
 
-    image_table_shape = list( adc.imgFeatures.shape )
+    image_table_shape = list( pdc.imgFeatures.shape )
     if image_table_shape[0] > num_of_images:
         image_table_shape[0] = num_of_images
-        adc.imgFeatures.resize( image_table_shape )
+        pdc.imgFeatures.resize( image_table_shape )
 
-    object_table_shape = list( adc.objFeatures.shape )
+    object_table_shape = list( pdc.objFeatures.shape )
     if object_table_shape[0] > num_of_objects:
         object_table_shape[0] = num_of_objects
-        adc.objFeatures.resize( object_table_shape )
+        pdc.objFeatures.resize( object_table_shape )
 
 
     print 'files imported'
 
     print 'finished importing'
 
-    return adc
+    return pdc
 
 
 

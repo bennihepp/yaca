@@ -6,43 +6,43 @@ from ..core.parameter_utils import *
 
 
 
-def create_widget( module, param_name, adc=None ):
+def create_widget( module, param_name, pdc=None ):
 
     param_descr = get_parameter_descr( module, param_name )
     param_type = param_descr[ 0 ]
 
     if param_type == PARAM_ANY:
-        widget = ParameterWidgetAny( module, param_name, adc )
+        widget = ParameterWidgetAny( module, param_name, pdc )
     elif param_type == PARAM_INT:
-        widget = ParameterWidgetInt( module, param_name, adc )
+        widget = ParameterWidgetInt( module, param_name, pdc )
     elif param_type == PARAM_FLOAT:
-        widget = ParameterWidgetFloat( module, param_name, adc )
+        widget = ParameterWidgetFloat( module, param_name, pdc )
     elif param_type == PARAM_STR:
-        widget = ParameterWidgetStr( module, param_name, adc )
+        widget = ParameterWidgetStr( module, param_name, pdc )
     elif param_type == PARAM_OBJ_FEATURE:
-        widget = ParameterWidgetObjFeature( module, param_name, adc )
+        widget = ParameterWidgetObjFeature( module, param_name, pdc )
     elif param_type == PARAM_IMG_FEATURE:
-        widget = ParameterWidgetImgFeature( module, param_name, adc )
+        widget = ParameterWidgetImgFeature( module, param_name, pdc )
     elif param_type == PARAM_TREATMENT:
-        widget = ParameterWidgetTreatment( module, param_name, adc )
+        widget = ParameterWidgetTreatment( module, param_name, pdc )
     elif param_type == PARAM_INTS:
-        widget = ParameterWidgetInts( module, param_name, adc )
+        widget = ParameterWidgetInts( module, param_name, pdc )
     elif param_type == PARAM_STRS:
-        widget = ParameterWidgetStrs( module, param_name, adc )
+        widget = ParameterWidgetStrs( module, param_name, pdc )
     elif param_type == PARAM_PATH:
-        widget = ParameterWidgetPath( module, param_name, adc )
+        widget = ParameterWidgetPath( module, param_name, pdc )
     elif param_type == PARAM_INPUT_FILE:
-        widget = ParameterWidgetInputFile( module, param_name, adc )
+        widget = ParameterWidgetInputFile( module, param_name, pdc )
     elif param_type == PARAM_OUTPUT_FILE:
-        widget = ParameterWidgetOutputFile( module, param_name, adc )
+        widget = ParameterWidgetOutputFile( module, param_name, pdc )
     elif param_type == PARAM_TREATMENTS:
-        widget = ParameterWidgetTreatments( module, param_name, adc )
+        widget = ParameterWidgetTreatments( module, param_name, pdc )
     elif param_type == PARAM_OBJ_FEATURES:
-        widget = ParameterWidgetObjFeatures( module, param_name, adc )
+        widget = ParameterWidgetObjFeatures( module, param_name, pdc )
     elif param_type == PARAM_INPUT_FILES:
-        widget = ParameterWidgetInputFiles( module, param_name, adc )
+        widget = ParameterWidgetInputFiles( module, param_name, pdc )
     else:
-        widget = ParameterWidgetAny( module, param_name, adc )
+        widget = ParameterWidgetAny( module, param_name, pdc )
 
     return widget
 
@@ -52,13 +52,13 @@ class ParameterWidgetBase(QWidget):
 
     __pyqtSignals__ = ('parameterChanged',)
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
         QWidget.__init__( self )
 
         self.module = module
         self.param_name = param_name
-        self.adc = adc
+        self.pdc = pdc
 
         param_descr = get_parameter_descr( module, param_name )
         self.param_default = param_descr[ 2 ]
@@ -96,9 +96,9 @@ class ParameterWidgetBase(QWidget):
 
 class ParameterWidgetAny(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.lineedit = QLineEdit()
         if self.param_default != None:
@@ -112,9 +112,9 @@ class ParameterWidgetAny(ParameterWidgetBase):
 
 class ParameterWidgetInt(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.spinbox = QSpinBox()
         if self.param_min != None:
@@ -141,9 +141,9 @@ class ParameterWidgetInt(ParameterWidgetBase):
 
 class ParameterWidgetFloat(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.spinbox = QDoubleSpinBox()
 
@@ -178,16 +178,16 @@ class ParameterWidgetStr(ParameterWidgetAny):
 
 class ParameterWidgetObjFeature(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc):
+    def __init__(self, module, param_name, pdc):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.comboBox = QComboBox()
         selected_index = -1
-        featureIds = self.adc.objFeatureIds.keys()
+        featureIds = self.pdc.objFeatureIds.keys()
         featureIds.sort()
         for k in featureIds:
-            v = self.adc.objFeatureIds[ k ]
+            v = self.pdc.objFeatureIds[ k ]
             self.comboBox.addItem( k, v )
 
         if self.value_set:
@@ -212,16 +212,16 @@ class ParameterWidgetObjFeature(ParameterWidgetBase):
 
 class ParameterWidgetImgFeature(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc):
+    def __init__(self, module, param_name, pdc):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.comboBox = QComboBox()
         selected_index = -1
-        featureIds = self.adc.imgFeatureIds.keys()
+        featureIds = self.pdc.imgFeatureIds.keys()
         featureIds.sort()
         for k in featureIds:
-            v = self.adc.imgFeatureIds[ k ]
+            v = self.pdc.imgFeatureIds[ k ]
             self.comboBox.addItem( k, v )
 
         if self.value_set:
@@ -246,17 +246,17 @@ class ParameterWidgetImgFeature(ParameterWidgetBase):
 
 class ParameterWidgetTreatment(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc):
+    def __init__(self, module, param_name, pdc):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.comboBox = QComboBox()
         selected_index = -1
-        treatments = self.adc.treatmentByName.keys()
+        treatments = self.pdc.treatmentByName.keys()
         treatments.sort()
         for tr_name in treatments:
-            j = self.adc.treatmentByName[ tr_name ]
-            tr = self.adc.treatments[ j ]
+            j = self.pdc.treatmentByName[ tr_name ]
+            tr = self.pdc.treatments[ j ]
             self.comboBox.addItem( tr.name )
 
         if self.value_set:
@@ -281,9 +281,9 @@ class ParameterWidgetTreatment(ParameterWidgetBase):
 
 class ParameterWidgetFileDialog(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc=None, caption='Select file'):
+    def __init__(self, module, param_name, pdc=None, caption='Select file'):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.lineedit = QLineEdit()
         self.lineedit.setReadOnly( True )
@@ -315,9 +315,9 @@ class ParameterWidgetFileDialog(ParameterWidgetBase):
 
 class ParameterWidgetPath(ParameterWidgetFileDialog):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetFileDialog.__init__( self, module, param_name, adc, 'Select path' )
+        ParameterWidgetFileDialog.__init__( self, module, param_name, pdc, 'Select path' )
 
         self.filedialog.setAcceptMode( QFileDialog.AcceptOpen )
         self.filedialog.setFileMode( QFileDialog.Directory)
@@ -326,9 +326,9 @@ class ParameterWidgetPath(ParameterWidgetFileDialog):
 
 class ParameterWidgetInputFile(ParameterWidgetFileDialog):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetFileDialog.__init__( self, module, param_name, adc, 'Select input file' )
+        ParameterWidgetFileDialog.__init__( self, module, param_name, pdc, 'Select input file' )
 
         self.filedialog.setAcceptMode( QFileDialog.AcceptOpen )
         self.filedialog.setFileMode( QFileDialog.ExistingFile)
@@ -337,9 +337,9 @@ class ParameterWidgetInputFile(ParameterWidgetFileDialog):
 
 class ParameterWidgetOutputFile(ParameterWidgetFileDialog):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetFileDialog.__init__( self, module, param_name, adc, 'Select output file' )
+        ParameterWidgetFileDialog.__init__( self, module, param_name, pdc, 'Select output file' )
 
         self.filedialog.setAcceptMode( QFileDialog.AcceptSave )
         self.filedialog.setFileMode( QFileDialog.AnyFile)
@@ -348,9 +348,9 @@ class ParameterWidgetOutputFile(ParameterWidgetFileDialog):
 
 class ParameterWidgetInputFiles(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc=None):
+    def __init__(self, module, param_name, pdc=None):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         self.listwidget = QListWidget()
         self.button = QPushButton('Browse')
@@ -386,9 +386,9 @@ class ParameterWidgetInputFiles(ParameterWidgetBase):
 
 class ParameterWidgetTreatments(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc):
+    def __init__(self, module, param_name, pdc):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         scrollarea = QScrollArea()
         self.buttongroup = QButtonGroup()
@@ -396,11 +396,11 @@ class ParameterWidgetTreatments(ParameterWidgetBase):
         self.buttons = []
         vbox = QVBoxLayout()
 
-        self.treatments = list( self.adc.treatmentByName.keys() )
+        self.treatments = list( self.pdc.treatmentByName.keys() )
         self.treatments.sort()
         for i in xrange( len( self.treatments ) ):
-            j = self.adc.treatmentByName[ self.treatments[ i ] ]
-            tr = self.adc.treatments[ j ]
+            j = self.pdc.treatmentByName[ self.treatments[ i ] ]
+            tr = self.pdc.treatments[ j ]
             self.checkBox = QCheckBox( tr.name )
             self.checkBox.setChecked( False )
             if self.value_set:
@@ -432,9 +432,9 @@ class ParameterWidgetTreatments(ParameterWidgetBase):
 
 class ParameterWidgetObjFeatures(ParameterWidgetBase):
 
-    def __init__(self, module, param_name, adc):
+    def __init__(self, module, param_name, pdc):
 
-        ParameterWidgetBase.__init__( self, module, param_name, adc )
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
         scrollarea = QScrollArea()
         self.buttongroup = QButtonGroup()
@@ -442,7 +442,7 @@ class ParameterWidgetObjFeatures(ParameterWidgetBase):
         self.buttons = []
         vbox = QVBoxLayout()
 
-        self.featureIds = list( self.adc.objFeatureIds.keys() )
+        self.featureIds = list( self.pdc.objFeatureIds.keys() )
         self.featureIds.sort()
         for i in xrange( len( self.featureIds ) ):
             k = self.featureIds[ i ]

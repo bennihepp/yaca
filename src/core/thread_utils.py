@@ -1,9 +1,41 @@
 import sys
 
+class AbstractThreadBase(object):
+    def start_method(self, method, *args):
+        """Run a method within the thread
+    
+        Input parameters:
+          - method: The method to be called
+          - args: Arbitrary parameters to be passed to the method
+        """
+        # set the method to be run in the thread...
+        self.__thread_method = method
+        # and the parameters that should be passed to it
+        self.__thread_args = args
+        # start the thread
+        self.start()
+
+    def run(self):
+        """This is the method that is called when the thread is started
+        """
+
+        self.__result = None
+
+        if self.__thread_method != None:
+            self.__result = self.__thread_method( *self.__thread_args )
+
+    def get_result(self):
+        """Return the result, that was returned by the last thread method
+        """
+
+        return self.__result
+
+
+
 if 'PyQt4.QtCore' in sys.modules:
     from PyQt4.QtCore import *
 
-    class Thread(QThread):
+    class Thread(QThread, AbstractThreadBase):
 
         def __init__(self):
             QThread.__init__( self )
@@ -26,7 +58,7 @@ else:
     def SIGNAL(s):
         return s
 
-    class Thread(object):
+    class Thread(AbstractThreadBase):
 
         def __init__(self):
             self.__slots = {}

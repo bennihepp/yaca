@@ -18,8 +18,13 @@ utils.register_parameter( __name__, 'positionY', utils.PARAM_OBJ_FEATURE, 'Featu
 utils.register_parameter( __name__, 'cellArea', utils.PARAM_OBJ_FEATURE, 'Feature ID for the area of a cell (in pixel)', 'cell_AreaShape_Area' )
 utils.register_parameter( __name__, 'nucleusArea', utils.PARAM_OBJ_FEATURE, 'Feature ID for the area of a nucleus (in pixel)', 'nucleus_AreaShape_Area' )
 
+utils.register_parameter( __name__, 'nucleusSolidity', utils.PARAM_OBJ_FEATURE, 'Feature ID for the solidity of a nucleus', 'nucleus_AreaShape_Solidity' )
+
 utils.register_parameter( __name__, 'minAreaBg', utils.PARAM_INT, 'Minimum number of background pixels', 50000, 0, None )
-utils.register_parameter( __name__, 'minNucSize', utils.PARAM_INT, 'Minimum size of nuclei in pixels', 1000, 0, None )
+utils.register_parameter( __name__, 'minNucArea', utils.PARAM_INT, 'Minimum area of nuclei in pixels', 1000, 0, None )
+utils.register_parameter( __name__, 'maxNucArea', utils.PARAM_INT, 'Maximum area of nuclei in pixels', 4000, 0, None )
+
+utils.register_parameter( __name__, 'minNucSolidity', utils.PARAM_FLOAT, 'Minimum nuclei solidity', 0.9, 0.0, 1.0 )
 
 utils.register_parameter( __name__, 'minDistLeft', utils.PARAM_INT, 'Minimum distance of cells to left image margin', 100, 0, None )
 utils.register_parameter( __name__, 'minDistRight', utils.PARAM_INT, 'Minimum distance of cells to right image margin', 100, 0, None )
@@ -38,41 +43,42 @@ utils.register_parameter( __name__, 'maxCells', utils.PARAM_INT, 'Maximum number
 
 
 # quality control of the data
-def quality_control( adc ):
+def quality_control( pdc ):
 
     print 'cellArea: %s' % cellArea
     print 'nucleusArea: ', nucleusArea
     print 'positionX: ', positionX
     print 'positionY: ', positionY
 
-    validImageMask = numpy.empty( ( len(adc.images), ) , dtype=bool )
+    validImageMask = numpy.empty( ( len(pdc.images), ) , dtype=bool )
     validImageMask[:] = True
 
-    validCellMask = numpy.empty( ( len(adc.objects), ) , dtype=bool )
+    validCellMask = numpy.empty( ( len(pdc.objects), ) , dtype=bool )
     validCellMask[:] = True
 
 
     # cells are at image periphery
-    #print "\n".join( adc.objFeatureIds.keys() )
-    featureId = adc.objFeatureIds[ positionX ]
+    #print "\n".join( pdc.objFeatureIds.keys() )
+    featureId = pdc.objFeatureIds[ positionX ]
     n1 = validCellMask.sum()
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , featureId ] > minDistLeft )
+                ( pdc.objFeatures[ : , featureId ] > minDistLeft )
     )
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , featureId ] < imageWidth-minDistRight )
+                ( pdc.objFeatures[ : , featureId ] < imageWidth-minDistRight )
     )
-    featureId = adc.objFeatureIds[ positionY ]
+    featureId = pdc.objFeatureIds[ positionY ]
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , featureId ] > minDistTop )
+                ( pdc.objFeatures[ : , featureId ] > minDistTop )
     )
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , featureId ] < imageHeight-minDistBottom )
+                ( pdc.objFeatures[ : , featureId ] < imageHeight-minDistBottom )
     )
     n2 = validCellMask.sum()
     print 'found %d cells out of image periphery' % (n1 - n2)
+
     # minimum nucleus area
-    nucleusFeatureId = adc.objFeatureIds[ nucleusArea ]
+    nucleusFeatureId = pdc.objFeatureIds[ nucleusArea ]
     #thresholdNucleusArea = numpy.median(image.objFeatures[:,featureId] \
     #              - 2 * numpy.mean( numpy.abs(
     #                      image.objFeatures[:,featureId]
@@ -80,36 +86,51 @@ def quality_control( adc ):
     #              ) )
     #)
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , nucleusFeatureId ] > minNucSize )
+                ( pdc.objFeatures[ : , nucleusFeatureId ] > minNucArea )
     )
     n3 = validCellMask.sum()
     print 'found %d cells with minimum nucleus area' % (n2 - n3)
 
-    # minimum relative cytoplasm area
-    #cellFeatureId = adc.cellFeatureIds['AreaShape_Area']
-    cellFeatureId = adc.objFeatureIds[ cellArea ]
+    # maximum nucleus area
     validCellMask = numpy.logical_and(validCellMask,
-                adc.objFeatures[ : , cellFeatureId ]
-                          > ( minCyToNucAreaFrac * adc.objFeatures[ : , nucleusFeatureId ] )
+                ( pdc.objFeatures[ : , nucleusFeatureId ] < maxNucArea )
     )
     n4 = validCellMask.sum()
-    print 'found %d cells with minimum relative cytoplasm area' % (n3 - n4)
+    print 'found %d cells with minimum nucleus area' % (n3 - n4)
 
-    # maximum relative cytoplasm area
+    # minimum relative cytoplasm area
+    #cellFeatureId = pdc.cellFeatureIds['AreaShape_Area']
+    cellFeatureId = pdc.objFeatureIds[ cellArea ]
     validCellMask = numpy.logical_and(validCellMask,
-                ( adc.objFeatures[ : , cellFeatureId ]
-                  < maxCyToNucAreaFrac * adc.objFeatures[ : , nucleusFeatureId ] )
+                pdc.objFeatures[ : , cellFeatureId ]
+                          > ( minCyToNucAreaFrac * pdc.objFeatures[ : , nucleusFeatureId ] )
     )
     n5 = validCellMask.sum()
     print 'found %d cells with maximum relative cytoplasm area' % (n4 - n5)
 
+    # maximum relative cytoplasm area
+    validCellMask = numpy.logical_and(validCellMask,
+                ( pdc.objFeatures[ : , cellFeatureId ]
+                  < maxCyToNucAreaFrac * pdc.objFeatures[ : , nucleusFeatureId ] )
+    )
+    n6 = validCellMask.sum()
+    print 'found %d cells with maximum relative cytoplasm area' % (n5 - n6)
+
+    # minimum nucleus solidity
+    nucleusSolidityFeatureId = pdc.objFeatureIds[ nucleusSolidity ]
+    validCellMask = numpy.logical_and(validCellMask,
+                ( pdc.objFeatures[ : , nucleusSolidityFeatureId ] > minNucSolidity )
+    )
+    n7 = validCellMask.sum()
+    print 'found %d cells with minimum nucleus solidity' % (n6 - n7)
+
     d = {}
 
-    print 'checking %d images' % len( adc.images )
+    print 'checking %d images' % len( pdc.images )
 
-    for image in adc.images:
+    for image in pdc.images:
 
-        imgCellMask = adc.objFeatures[ : , adc.objImageFeatureId ] == image.rowId
+        imgCellMask = pdc.objFeatures[ : , pdc.objImageFeatureId ] == image.rowId
 
         if image.state != 'ok':
             pass
@@ -125,8 +146,8 @@ def quality_control( adc ):
 
         else:
             # minimal number of background pixels
-            cellFeatureId = adc.objFeatureIds[ cellArea ]
-            areaOccupiedByCells = sum( adc.objFeatures[ imgCellMask , cellFeatureId ] )
+            cellFeatureId = pdc.objFeatureIds[ cellArea ]
+            areaOccupiedByCells = sum( pdc.objFeatures[ imgCellMask , cellFeatureId ] )
             if (imageWidth * imageHeight - areaOccupiedByCells < minAreaBg):
                 #print 'not_enough_bg_Pixels for image(%d): %s' % (image.rowId,image.name)
                 image.state = 'not_enough_bg_pixels'
