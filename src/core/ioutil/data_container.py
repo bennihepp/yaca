@@ -5,11 +5,16 @@ import numpy
 OBJECT_ID_FEATURE_NAME = 'OBJECT_ID'
 TREATMENT_ID_FEATURE_NAME = 'TREATMENT_ID'
 IMAGE_ID_FEATURE_NAME = 'IMAGE_ID'
+STATE_ID_FEATURE_NAME = ''
+
+YACA_DATA_VERSION = '0.1'
 
 
 
 # definition of the data structure used for the CellProfiler2 output
-class phenonice_data_container(object):
+class yaca_data_container(object):
+
+    __version__ = YACA_DATA_VERSION
 
     def __init__(self):
 
@@ -34,30 +39,31 @@ class phenonice_data_container(object):
 
         self.errors = []
 
-
-class phenonice_data_image(object):
+class yaca_data_image(object):
 
     def __init__(self):
         self.rowId = -1
-        self.state = 'ok'
+        self.import_state = 'ok'
+        self.state = None
         self.treatment = None
         self.imageFiles = []
         self.properties = {}
 #        self.objIds = None #numpy.array(0)
 
 
-class phenonice_data_object(object):
+class yaca_data_object(object):
 
     def __init__(self):
         self.rowId = -1
-        self.state = 'ok'
+        self.import_state = 'ok'
+        self.state = None
         self.image = None
         self.position_x = -1.0
         self.position_y = -1.0
 #        self.properties = {}
 
 
-class phenonice_data_treatment(object):
+class yaca_data_treatment(object):
 
     def __init__(self, name):
         self.rowId = -1
@@ -66,7 +72,7 @@ class phenonice_data_treatment(object):
 #        self.objIds = None #numpy.array(0)
 
 
-class phenonice_data_error(object):
+class yaca_data_error(object):
 
     def __init__(self, exception, traceback, entity):
         self.exception = exception

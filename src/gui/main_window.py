@@ -60,6 +60,8 @@ class MainWindow(QMainWindow):
         self.channelDescriptionTab = None
         self.clusterConfigurationTab = None
 
+        self.__pipeline_running = False
+
         """self.channelDescription = {}
         self.channelDescription['R'] = 'Nucleus staining (A568)'
         self.channelDescription['G'] = 'Protein staining (A488)'
@@ -194,30 +196,37 @@ class MainWindow(QMainWindow):
 
         if run_pipeline:
 
-            self.start_cancel_button.setText( 'Cancel' )
+            if self.__pipeline_running:
 
-            self.progress_bar.setRange( 0, 100 )
-            self.progress_bar.setFormat( 'processing input data - %p%' )
+                self.pl.stop()
+
+            else:
+
+                self.start_cancel_button.setText( 'Cancel' )
     
-            try:
-
-                pdc = self.importer.get_pdc()
-                clusterConfiguration = self.clusterConfigurationTab.clusterConfiguration
-
-                self.pl = pipeline.Pipeline( pdc, clusterConfiguration )
-                self.pl.connect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
-                self.pl.connect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
-                self.__quality_control_done = False
-                self.pl.start_quality_control()
-                #self.pl.start()
-                #pl.run( self.on_update_progress )
-
-            except:
+                self.progress_bar.setRange( 0, 100 )
+                self.progress_bar.setFormat( 'processing input data - %p%' )
+        
+                try:
     
-                self.progress_bar.setFormat( 'Idling...' )
+                    pdc = self.importer.get_pdc()
+                    clusterConfiguration = self.clusterConfigurationTab.clusterConfiguration
     
-                self.statusBar().showMessage( 'Unable to start pipeline thread!' )
-                raise
+                    self.pl = pipeline.Pipeline( pdc, clusterConfiguration )
+                    self.pl.connect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
+                    self.pl.connect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
+                    self.__pipeline_running = True
+                    self.__quality_control_done = False
+                    self.pl.start_quality_control()
+                    #self.pl.start()
+                    #pl.run( self.on_update_progress )
+    
+                except:
+        
+                    self.progress_bar.setFormat( 'Idling...' )
+        
+                    self.statusBar().showMessage( 'Unable to start pipeline thread!' )
+                    raise
 
 
     def on_pipeline_finished(self):
@@ -237,6 +246,11 @@ class MainWindow(QMainWindow):
         
                 self.start_cancel_button.setText( 'Perform cell selection' )
 
+                self.__pipeline_running = False
+
+                self.pl.disconnect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
+                self.pl.disconnect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
+
                 del self.pl
 
             else:
@@ -251,6 +265,11 @@ class MainWindow(QMainWindow):
             self.progress_bar.setFormat( 'Idling...' )
     
             self.start_cancel_button.setText( 'Perform cell selection' )
+
+            self.__pipeline_running = False
+
+            self.pl.disconnect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
+            self.pl.disconnect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
 
             del self.pl
 

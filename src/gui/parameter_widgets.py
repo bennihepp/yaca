@@ -120,11 +120,11 @@ class ParameterWidgetInt(ParameterWidgetBase):
         if self.param_min != None:
             self.spinbox.setMinimum( self.param_min )
         else:
-            self.spinbox.setMinimum( -100 )
+            self.spinbox.setMinimum( -1000 )
         if self.param_max != None:
             self.spinbox.setMaximum( self.param_max )
         else:
-            self.spinbox.setMaximum( 100 )
+            self.spinbox.setMaximum( 1000 )
 
         if self.value_set:
                 self.spinbox.setMinimum( min( self.spinbox.minimum(), self.value ) )
@@ -150,11 +150,11 @@ class ParameterWidgetFloat(ParameterWidgetBase):
         if self.param_min != None:
             self.spinbox.setMinimum( self.param_min )
         else:
-            self.spinbox.setMinimum( -100.0 )
+            self.spinbox.setMinimum( -1000.0 )
         if self.param_max != None:
             self.spinbox.setMaximum( self.param_max )
         else:
-            self.spinbox.setMaximum( 100.0 )
+            self.spinbox.setMaximum( 1000.0 )
 
         self.spinbox.setSingleStep( ( self.spinbox.maximum() - self.spinbox.minimum() ) / 100.0 )
 
@@ -398,9 +398,11 @@ class ParameterWidgetTreatments(ParameterWidgetBase):
 
         self.treatments = list( self.pdc.treatmentByName.keys() )
         self.treatments.sort()
+        #print self.pdc.treatmentByName
         for i in xrange( len( self.treatments ) ):
             j = self.pdc.treatmentByName[ self.treatments[ i ] ]
             tr = self.pdc.treatments[ j ]
+            #print '%s -> %s' % ( self.treatments[ i ], tr.name )
             self.checkBox = QCheckBox( tr.name )
             self.checkBox.setChecked( False )
             if self.value_set:
@@ -425,6 +427,7 @@ class ParameterWidgetTreatments(ParameterWidgetBase):
         for i in xrange( len( self.buttons ) ):
             if self.buttons[ i ].isChecked():
                 value.append( self.treatments[ i ] )
+                #print 'treatment: %s' % self.treatments[ i ]
 
         ParameterWidgetBase.update_value( self, value )
 

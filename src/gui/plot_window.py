@@ -17,6 +17,8 @@ class PlotWindow(QWidget):
     PLOT_TYPE_BAR = 1
     PLOT_TYPE_HISTOGRAM = 2
     PLOT_TYPE_HEATMAP = 3
+    PLOT_TYPE_LINE = 4
+    PLOT_TYPE_CUSTOM = 5
 
     def __init__(self, number_of_plots=1, plot_stretching=None, show_toolbar=False, parent=None):
 
@@ -35,6 +37,13 @@ class PlotWindow(QWidget):
         self.on_draw()
 
 
+    def connect_event_handler(self, plot_index, event, handler):
+
+        label, canvas, fig, axes, toolbar, widget = self.__plots[ plot_index ]
+
+        canvas.mpl_connect( event, handler )
+
+
     def show_toolbar(self):
         return self.__show_toolbar
 
@@ -48,6 +57,17 @@ class PlotWindow(QWidget):
         if  self.__number_of_plots != number_of_plots \
          or self.__plot_stretching != plot_stretching:
             self.rebuild_widget( number_of_plots, plot_stretching )
+
+
+    def __compute_labels_bbox(self, fig, labels):
+        import matplotlib.transforms as mtransforms
+        bboxes = []
+        for label in labels:
+            bbox = label.get_window_extent()
+            bboxi = bbox.inverse_transformed( fig.transFigure )
+            bboxes.append( bboxi )
+        bbox = mtransforms.Bbox.union( bboxes )
+        return bbox
 
 
     def on_draw(self, plot_index=-1):
@@ -65,16 +85,46 @@ class PlotWindow(QWidget):
 
             label.setText( caption )
 
-            if plot_type == self.PLOT_TYPE_BAR:
-                self.on_draw_barplot( fig, axes, data, mpl_kwargs )
-            elif plot_type == self.PLOT_TYPE_HISTOGRAM:
-                self.on_draw_histogram( fig, axes, data, mpl_kwargs )
-            elif plot_type == self.PLOT_TYPE_HEATMAP:
-                self.__clear_plot( plot_index )
-                label, canvas, fig, axes, toolbar, widget = self.__plots[ plot_index ]
-                self.on_draw_heatmap( fig, axes, data, mpl_kwargs )
+            labels = None
+            bottom_shift = 0.0
+            go_on = True
 
-            canvas.draw()
+            while go_on:
+
+                go_on = False
+
+                old_labels = labels
+
+                if plot_type == self.PLOT_TYPE_BAR:
+                    labels = self.on_draw_barplot( fig, axes, data, bottom_shift, **mpl_kwargs )
+                elif plot_type == self.PLOT_TYPE_HISTOGRAM:
+                    labels = self.on_draw_histogram( fig, axes, data, bottom_shift, **mpl_kwargs )
+                elif plot_type == self.PLOT_TYPE_HEATMAP:
+                    self.__clear_plot( plot_index )
+                    label, canvas, fig, axes, toolbar, widget = self.__plots[ plot_index ]
+                    labels = self.on_draw_heatmap( fig, axes, data, bottom_shift, **mpl_kwargs )
+                elif plot_type == self.PLOT_TYPE_LINE:
+                    labels = self.on_draw_lineplot( fig, axes, data, bottom_shift, **mpl_kwargs )
+                elif plot_type == self.PLOT_TYPE_CUSTOM:
+                    self.__clear_plot( plot_index )
+                    label, canvas, fig, axes, toolbar, widget = self.__plots[ plot_index ]
+                    drawing_method, custom_data = data
+                    labels = drawing_method( fig, axes, custom_data, bottom_shift, **mpl_kwargs )
+
+                canvas.draw()
+
+                if labels != None:
+                    bbox = self.__compute_labels_bbox( fig, labels )
+                    bottom_shift = 1.1 * bbox.height
+
+                if old_labels == None and labels != None:
+                    go_on = True
+
+
+    def draw_custom(self, plot_index, caption, drawing_method, custom_data, **kwargs):
+        data = ( drawing_method, custom_data )
+        self.__plot_infos[ plot_index ] = ( self.PLOT_TYPE_CUSTOM, caption, data, kwargs )
+        self.on_draw( plot_index )
 
 
     def draw_histogram(self, plot_index, caption, values, bins, bin_labels=None, bin_rescale=None, **kwargs):
@@ -82,7 +132,7 @@ class PlotWindow(QWidget):
         self.__plot_infos[ plot_index ] = ( self.PLOT_TYPE_HISTOGRAM, caption, data, kwargs )
         self.on_draw( plot_index )
 
-    def on_draw_histogram(self, fig, axes, data, mpl_kwargs):
+    def on_draw_histogram(self, fig, axes, data, bottom_shift=None, **mpl_kwargs):
         # Redraws the figure
 
         values, bins, bin_labels, bin_rescale = data
@@ -105,7 +155,9 @@ class PlotWindow(QWidget):
                 if not mpl_kwargs.has_key( 'align' ): mpl_kwargs[ 'align' ] = 'center'
                 axes.bar( x, tmp, **mpl_kwargs )
                 axes.set_xticks( x )
-                axes.set_xticklabels( bin_labels )
+                bin_labels = axes.set_xticklabels( bin_labels, rotation=270 )
+                if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
+                    fig.subplots_adjust( bottom=bottom_shift )
 
             else:
 
@@ -116,13 +168,15 @@ class PlotWindow(QWidget):
 
             axes.grid( True )
 
+        return bin_labels
+
 
     def draw_barplot(self, plot_index, caption, values, x=None, x_labels=None, **kwargs):
         data = ( values, x, x_labels )
         self.__plot_infos[ plot_index ] = ( self.PLOT_TYPE_BAR, caption, data, kwargs )
         self.on_draw( plot_index )
 
-    def on_draw_barplot(self, fig, axes, data, mpl_kwargs):
+    def on_draw_barplot(self, fig, axes, data, bottom_shift=None, **mpl_kwargs):
         # Redraws the figure
 
         values, x, x_labels = data
@@ -145,9 +199,13 @@ class PlotWindow(QWidget):
             axes.bar( x, values, **mpl_kwargs )
             if x_labels != None:
                 axes.set_xticks( x )
-                axes.set_xticklabels( x_labels )
+                x_labels = axes.set_xticklabels( x_labels, rotation='270' )
+                if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
+                    fig.subplots_adjust( bottom=bottom_shift )
 
             axes.grid( True )
+
+        return x_labels
 
 
     def draw_heatmap(self, plot_index, caption, heatmap, x=None, x_labels=None, y=None, y_labels=None, **kwargs):
@@ -155,7 +213,7 @@ class PlotWindow(QWidget):
         self.__plot_infos[ plot_index ] = ( self.PLOT_TYPE_HEATMAP, caption, data, kwargs )
         self.on_draw( plot_index )
 
-    def on_draw_heatmap(self, fig, axes, data, mpl_kwargs):
+    def on_draw_heatmap(self, fig, axes, data, bottom_shift=None, **mpl_kwargs):
         # Redraws the figure
 
         heatmap, x, x_labels, y, y_labels = data
@@ -182,11 +240,21 @@ class PlotWindow(QWidget):
             else:
                 axes.set_yticks( y )
 
-            if x_labels != None:
-                axes.set_xticklabels( x_labels )
+            if x_labels == None:
+                x_labels = []
+                for i in x:
+                    x_labels.append( str( i ) )
 
-            if y_labels != None:
-                axes.set_yticklabels( y_labels )
+            x_labels = axes.set_xticklabels( x_labels, rotation='270' )
+            if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
+                fig.subplots_adjust( bottom=bottom_shift )
+
+            if y_labels == None:
+                y_labels = []
+                for i in y:
+                    y_labels.append( str( i ) )
+
+            y_labels = axes.set_yticklabels( y_labels, rotation='0' )
 
             if not mpl_kwargs.has_key( 'color' ): mpl_kwargs[ 'color' ] = 'white'
             if not mpl_kwargs.has_key( 'linestyle' ): mpl_kwargs[ 'linestyle' ] = '-'
@@ -195,6 +263,44 @@ class PlotWindow(QWidget):
             axes.grid( True )
 
             fig.colorbar( aximg )
+
+        return x_labels
+
+
+    def draw_lineplot(self, plot_index, caption, x, y, marking='-', **kwargs):
+        data = ( x, y, marking )
+        self.__plot_infos[ plot_index ] = ( self.PLOT_TYPE_LINE, caption, data, kwargs )
+        self.on_draw( plot_index )
+
+    def on_draw_lineplot(self, fig, axes, data, bottom_shift=None, **mpl_kwargs):
+        # Redraws the figure
+
+        x, y, marking = data
+
+        axes.clear()
+
+        if x == None:
+            x = numpy.arange( y.shape[0] )
+
+        if not mpl_kwargs.has_key( 'color' ): mpl_kwargs[ 'color' ] = 'red'
+        if not mpl_kwargs.has_key( 'alpha' ): mpl_kwargs[ 'alpha' ] = 0.75
+        if not mpl_kwargs.has_key( 'antialiased' ): mpl_kwargs[ 'antialiased' ] = True
+        #if not mpl_kwargs.has_key( 'marker' ): mpl_kwargs[ 'marker' ] = 'None'
+        #if not mpl_kwargs.has_key( 'linestyle' ): mpl_kwargs[ 'linestyle' ] = '-'
+
+        axes.plot( x, y, marking, **mpl_kwargs )
+
+        x = axes.get_xticks()
+        x_labels = []
+        for i in x:
+            x_labels.append( str( i ) )
+        x_labels = axes.set_xticklabels( x_labels, rotation='270' )
+        if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
+            fig.subplots_adjust( bottom=bottom_shift )
+
+        axes.grid( True )
+
+        return x_labels
 
 
     def __clear_plot(self, plot_index):
@@ -237,7 +343,7 @@ class PlotWindow(QWidget):
             # Create the mpl Figure and FigCanvas objects. 
             # 5x4 inches, 100 dots-per-inch
             #
-            dpi = 100
+            #dpi = 100
             #self.fig = Figure((5.0, 4.0), dpi=self.dpi)
             fig = pyplot.figure()
             canvas = FigureCanvas( fig )

@@ -7,6 +7,8 @@ import traceback
 from data_container import *
 
 
+TREATMENT_ID_CP2_FEATURE_NAME = 'Metadata_TREATMENT_ID'
+
 
 OBJECT_IMAGE_ID_IDENTIFIER = 'ImageNumber'
 def default_image_id_extractor( row, column_names ):
@@ -114,36 +116,40 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
     working_dict[ 'img_image_id_feature_is_virtual' ] = False
     if not pdc.imgFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
         pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
-        pdc.imgImageFeatureId = pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ]
         working_dict[ 'img_image_id_feature_is_virtual' ] = True
+    pdc.imgImageFeatureId = pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ]
 
     # check if we have to provide a virtual treatmentId-feature for the images
     working_dict[ 'img_treatment_id_feature_is_virtual' ] = False
-    if not pdc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
+    if  ( not pdc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ) ) \
+    and ( not pdc.imgFeatureIds.has_key( TREATMENT_ID_CP2_FEATURE_NAME ) ):
+        print 'creating treatment feature for image'
         pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
-        pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
         working_dict[ 'img_treatment_id_feature_is_virtual' ] = True
+    pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
 
     # check if we have to provide a virtual objectId-feature for the objects
     working_dict[ 'obj_object_id_feature_is_virtual' ] = False
     if not pdc.objFeatureIds.has_key( OBJECT_ID_FEATURE_NAME ):
         pdc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
-        pdc.objObjectFeatureId = pdc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ]
         working_dict[ 'obj_object_id_feature_is_virtual' ] = True
+    pdc.objObjectFeatureId = pdc.objFeatureIds[ OBJECT_ID_FEATURE_NAME ]
 
     # check if we have to provide a virtual imageId-feature for the objects
     working_dict[ 'obj_image_id_feature_is_virtual' ] = False
     if not pdc.objFeatureIds.has_key( IMAGE_ID_FEATURE_NAME ):
         pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
-        pdc.objImageFeatureId = pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ]
         working_dict[ 'obj_image_id_feature_is_virtual' ] = True
+    pdc.objImageFeatureId = pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ]
 
     # check if we have to provide a virtual treatmentId-feature for the objects
     working_dict[ 'obj_treatment_id_feature_is_virtual' ] = False
-    if not pdc.objFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
+    if  ( not pdc.objFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ) ) \
+    and ( not pdc.objFeatureIds.has_key( TREATMENT_ID_CP2_FEATURE_NAME ) ):
+        print 'creating treatment feature for objects'
         pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
-        pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
         working_dict[ 'obj_treatment_id_feature_is_virtual' ] = True
+    pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
 
 
 
@@ -188,7 +194,7 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
     object_column_types = working_dict[ 'object_column_types' ]
 
 
-    # fill phenonice_data_structure
+    # fill yaca_data_structure
 
     images,image_column_names,image_column_types = image_data
 
@@ -198,31 +204,15 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
 
     for i in xrange( len( images ) ):
 
-        img = phenonice_data_image()
+        img = yaca_data_image()
         img.rowId = len( pdc.images )
-
-        try:
-            treatment_name = treatment_extractor( images[i], image_column_names )
-            if not pdc.treatmentByName.has_key(treatment_name):
-                treatment = phenonice_data_treatment( treatment_name )
-                treatment.rowId = len( pdc.treatments )
-                pdc.treatmentByName[treatment_name] = len( pdc.treatments )
-                pdc.treatments.append( treatment )
-                img.treatment = treatment
-            else:
-                img.treatment = pdc.treatments[ pdc.treatmentByName[ treatment_name ] ]
-        except Exception,e:
-            img.state = 'no_treatment'
-            tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            pdc.errors.append( phenonice_data_error( e, tb, img ) )
-            raise
 
         try:
             img.imageFiles = image_files_extractor( images[i], image_column_names )
         except Exception,e:
-            img.state = 'no_image_files'
+            img.import_state = 'no_image_files'
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            pdc.errors.append( phenonice_data_error( e, tb, img ) )
+            pdc.errors.append( yaca_data_error( e, tb, img ) )
             raise
 
         n = 0
@@ -237,6 +227,26 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
                 #pdc.imgFeatures[img.rowId][n] = float( images[i][j] )
                 n += 1
 
+        try:
+            if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
+                treatment_name = treatment_extractor( images[i], image_column_names )
+            else:
+                treatment_name = str( pdc.imgFeatures[ img.rowId, pdc.imgTreatmentFeatureId ] )
+
+            if not pdc.treatmentByName.has_key(treatment_name):
+                treatment = yaca_data_treatment( treatment_name )
+                treatment.rowId = len( pdc.treatments )
+                pdc.treatmentByName[treatment_name] = len( pdc.treatments )
+                pdc.treatments.append( treatment )
+                img.treatment = treatment
+            else:
+                img.treatment = pdc.treatments[ pdc.treatmentByName[ treatment_name ] ]
+        except Exception,e:
+            img.import_state = 'no_treatment'
+            tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
+            pdc.errors.append( yaca_data_error( e, tb, img ) )
+            raise
+
         if working_dict[ 'img_image_id_feature_is_virtual' ]:
             pdc.imgFeatures[img.rowId][ pdc.imgImageFeatureId ] = img.rowId
 
@@ -247,7 +257,7 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
 
     for i in xrange( len(o0) ):
 
-        obj = phenonice_data_object()
+        obj = yaca_data_object()
         obj.rowId = len( pdc.objects )
 
         found_img_id = False
@@ -279,16 +289,16 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
                 #    obj.properties[ ocn[j] ] = o[i][j]
 
         if not found_img_id:
-            obj.state = 'no image'
+            obj.import_state = 'no image'
             e = Exception( 'Unable to extract image id' )
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            pdc.errors.append( phenonice_data_error( e, tb, obj ) )
+            pdc.errors.append( yaca_data_error( e, tb, obj ) )
             raise e
         if not found_obj_position:
-            obj.state = 'no_position'
+            obj.import_state = 'no_position'
             e = Exception( 'Unable to extract object position' )
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
-            pdc.errors.append( phenonice_data_error( e, tb, img ) )
+            pdc.errors.append( yaca_data_error( e, tb, img ) )
             raise e
 
 
@@ -391,7 +401,7 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
     return current_num_of_images, current_num_of_objects
 
 # Import results (CSV-files) as exported from CellProfiler2.
-# Returns an phenonice_data_container.
+# Returns an yaca_data_container.
 # Input parameters:
 #   path: path in which to look for .csv files
 #   images_file_postfix: postfix of the .csv files describing the images
@@ -407,7 +417,7 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
     print 'importing results'
 
     # create data container
-    pdc = phenonice_data_container()
+    pdc = yaca_data_container()
 
     # recurse into all subfolders
 

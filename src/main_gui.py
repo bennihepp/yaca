@@ -13,7 +13,7 @@ skip_next = 0
 
 def print_help():
 
-    print """Usage: python %s [options]
+    sys.stderr.write( """Usage: python %s [options]
 Possible options:
   --simple-ui                   Use a simplified user interface (e.g. for presentation)
   --full-ui                     Use the full user interface (default)
@@ -24,7 +24,7 @@ Possible options:
                                 of the project file
   --img-symlinks <path>         Create symlinks of the images within <path>,
                                 the filename will be the image-ID.
-""" % sys.argv[ 0 ]
+""" % sys.argv[ 0 ] )
 
 
 if len( sys.argv ) > 1:
@@ -56,9 +56,9 @@ if len( sys.argv ) > 1:
             print_help()
             sys.exit( 0 )
         else:
-            print 'Unknown option: %s' % arg
+            sys.stderr.write( 'Unknown option: %s\n' % arg )
             print_help()
-            sys.exit( 1 )
+            sys.exit( -1 )
 
 
 from PyQt4.QtCore import *

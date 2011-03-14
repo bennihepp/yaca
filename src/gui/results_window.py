@@ -13,8 +13,10 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as Naviga
 from matplotlib.figure import Figure
 from matplotlib import pyplot
 
+import print_engine
 from gallery_window import GalleryWindow
 from plot_window import PlotWindow
+from cluster_profiles_window import ClusterProfilesWindow
 from gui_utils import CellPixmapFactory,CellFeatureTextFactory
 
 from ..core import cluster
@@ -106,7 +108,7 @@ class ResultWindowNavigationToolbar( NavigationToolbar ):
 
 
 
-class ResultsWindow(QWidget):
+class ResultsWindow(QMainWindow):
 
     GROUP_POLICY_TREATMENT = 0
     GROUP_POLICY_CLUSTERING = 1
@@ -140,10 +142,8 @@ class ResultsWindow(QWidget):
         elif self.group_policy == self.GROUP_POLICY_TREATMENT:
             self.sorting_by_group = numpy.argsort( self.features[ : , self.pdc.objTreatmentFeatureId ] )
 
-        QWidget.__init__(self, parent)
+        QMainWindow.__init__(self, parent)
         self.setWindowTitle('Results')
-
-        self.build_widget()
 
         featureDescription = dict( self.pdc.objFeatureIds )
 
@@ -163,9 +163,38 @@ class ResultsWindow(QWidget):
         self.last_group = None
         self.last_index = None
 
+        self.prange = None
+
         self.__button_pressed_pos = None
 
+        self.__clustering_running = False
+
+        self.__cell_mask_dict = {
+            'Non-control-like' : [ self.pipeline.nonControlCellMask, 'Non-control-like cells' ],
+            'Control-like' : [ self.pipeline.controlCellMask, 'Control-like cells' ],
+            'Valid' : [ self.pipeline.validCellMask, 'All valid cells' ],
+            'Invalid' : [ numpy.invert( self.pipeline.validCellMask ), 'All invalid cells' ]
+        }
+        self.__default_cell_mask_name = 'Non-control-like'
+
+        self.build_menu()
+        self.build_widget()
+
+        self.on_draw_general_plots( True )
+
         self.on_draw()
+
+        print 'valid cells:'
+        pdc = pipeline.pdc
+        for tr in pdc.treatments:
+            tr_mask = pdc.objFeatures[ self.pipeline.validCellMask ][ :,  pdc.objTreatmentFeatureId ] == tr.rowId
+            print '  %s -> %d' % ( tr.name, numpy.sum( tr_mask ) )
+
+        print 'non-control-lile cells:'
+        pdc = pipeline.pdc
+        for tr in pdc.treatments:
+            tr_mask = pdc.objFeatures[ self.pipeline.nonControlCellMask ][ :,  pdc.objTreatmentFeatureId ] == tr.rowId
+            print '  %s -> %d' % ( tr.name, numpy.sum( tr_mask ) )
 
 
     def closeEvent(self, ce):
@@ -178,6 +207,12 @@ class ResultsWindow(QWidget):
         try: self.__plot_window.close();
         except: pass
         try: self.clustering_plot_window.close()
+        except: pass
+        try: self.hclustering_plot_window.close()
+        except: pass
+        try: self.general_plot_window.close()
+        except: pass
+        try: self.cluster_profiles_window.close()
         except: pass
 
         ce.accept()
@@ -222,18 +257,471 @@ class ResultsWindow(QWidget):
         if groupId < 0:
             groupId = self.picked_group
 
-        selectionMask = self.get_id_mask_for_group( groupId )
+        selectionMask = self.get_full_id_mask_for_group( groupId )
+
+        caption = 'Showing cells from %s %s' % ( self.get_group_policy_name(), self.get_group_name() )
+
+        self.view_cells( selectionMask, focusId, caption )
+
+    def view_cells(self, selectionMask, focusId, caption):
 
         selectionIds = self.pdc.objFeatures[ : , self.pdc.objObjectFeatureId ][ selectionMask ]
 
-        featureFactory = CellFeatureTextFactory( self.pdc, self.pipeline.nonControlCellMask )
-        pixmapFactory = CellPixmapFactory( self.pdc, self.channelMapping, self.pipeline.nonControlCellMask )
+        #featureFactory = CellFeatureTextFactory( self.pdc, self.pipeline.nonControlCellMask )
+        #pixmapFactory = CellPixmapFactory( self.pdc, self.channelMapping, self.pipeline.nonControlCellMask )
 
-        self.gallery.on_selection_changed(focusId, selectionIds, pixmapFactory, featureFactory)
-        self.gallery.update_caption(
-            'Showing cells from %s %s' % ( self.get_group_policy_name(), self.get_group_name() )
-        )
+        featureFactory = CellFeatureTextFactory( self.pdc )
+        pixmapFactory = CellPixmapFactory( self.pdc, self.channelMapping )
+
+        if focusId >= 0:
+            focusObjId = self.features[ focusId, self.pdc.objObjectFeatureId ]
+        else:
+            focusObjId = -1
+
+        self.gallery.on_selection_changed( focusObjId, selectionIds, pixmapFactory, featureFactory )
+
+        self.gallery.update_caption( caption )
         self.gallery.show()
+
+
+    def on_print_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print cluster profiles', '', 
+                            file_choices))
+
+        if not pdf_filename:
+            return
+
+        print 'printing cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+
+    def on_print_norm0_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print normalized 0.0 cluster profiles', '', 
+                            file_choices))
+
+        if not pdf_filename:
+            return
+
+        print 'printing normalized 0.0 cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+            print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename, True, 0.0 )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+        return sum_of_min_profileHeatmap, l2_norm_profileHeatmap
+
+    def on_print_norm1_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print normalized 0.1 cluster profiles', '', 
+                            file_choices))
+
+        if not pdf_filename:
+            return
+
+        print 'printing normalized 0.1 cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+            print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename, True, 0.1 )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+        return sum_of_min_profileHeatmap, l2_norm_profileHeatmap
+
+    def on_print_norm2_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print normalized 0.2 cluster profiles', '', 
+                            file_choices))
+
+        if not pdf_filename:
+            return
+
+        print 'printing normalized 0.2 cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+            print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename, True, 0.2 )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+        return sum_of_min_profileHeatmap, l2_norm_profileHeatmap
+
+    def on_print_norm3_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print normalized 0.3 cluster profiles', '', 
+                            file_choices))
+
+        if not pdf_filename:
+            return
+
+        print 'printing normalized 0.3 cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+            print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename, True, 0.3 )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+        return sum_of_min_profileHeatmap, l2_norm_profileHeatmap
+
+    def on_print_norm4_cluster_profiles(self, pdf_filename=None):
+
+        if pdf_filename == None:
+
+            file_choices = "Cluster profiles (*.pdf)"
+    
+            pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                            'Print normalized 0.4 cluster profiles', '', 
+                            file_choices))
+        if not pdf_filename:
+            return
+
+        print 'printing normalized 0.4 cluster profiles...'
+        #pdf_filename = '/home/hepp/cluster_profiles.pdf'
+        sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+            print_engine.print_cluster_profiles_and_heatmap( self.pipeline.pdc, self.pipeline.nonControlClusterProfiles, pdf_filename, True, 0.4 )
+        #print_engine.view_file( pdf_filename )
+        print 'done'
+
+        return sum_of_min_profileHeatmap, l2_norm_profileHeatmap
+
+    def on_print_all_cluster_profiles(self):
+
+        file_choices = "Cluster profiles (*.pdf)"
+
+        pdf_filename = unicode( QFileDialog.getSaveFileName(self, 
+                        'Print all cluster profiles', '', 
+                        file_choices))
+        if not pdf_filename:
+            return
+
+        path, filename = os.path.split( pdf_filename )
+
+        base = os.path.splitext( filename )[ 0 ]
+
+        self.on_print_cluster_profiles( os.path.join( path, base + '.pdf' ) )
+
+        sum_of_min_profileHeatmap0, l2_norm_profileHeatmap0 = self.on_print_norm0_cluster_profiles( os.path.join( path, 'norm_0.0_' + base + '.pdf' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, sum_of_min_profileHeatmap0, os.path.join( path, 'sum_of_min_0.0_' + base + '.xls' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, l2_norm_profileHeatmap0, os.path.join( path, 'l2_norm_0.0_' + base + '.xls' ) )
+
+        sum_of_min_profileHeatmap1, l2_norm_profileHeatmap1 = self.on_print_norm1_cluster_profiles( os.path.join( path, 'norm_0.1_' + base + '.pdf' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, sum_of_min_profileHeatmap1, os.path.join( path, 'sum_of_min_0.1_' + base + '.xls' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, l2_norm_profileHeatmap1, os.path.join( path, 'l2_norm_0.1_' + base + '.xls' ) )
+
+        sum_of_min_profileHeatmap2, l2_norm_profileHeatmap2 = self.on_print_norm2_cluster_profiles( os.path.join( path, 'norm_0.2_' + base + '.pdf' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, sum_of_min_profileHeatmap2, os.path.join( path, 'sum_of_min_0.2_' + base + '.xls' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, l2_norm_profileHeatmap2, os.path.join( path, 'l2_norm_0.2_' + base + '.xls' ) )
+
+        sum_of_min_profileHeatmap3, l2_norm_profileHeatmap3 = self.on_print_norm3_cluster_profiles( os.path.join( path, 'norm_0.3_' + base + '.pdf' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, sum_of_min_profileHeatmap3, os.path.join( path, 'sum_of_min_0.3_' + base + '.xls' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, l2_norm_profileHeatmap3, os.path.join( path, 'l2_norm_0.3_' + base + '.xls' ) )
+
+        sum_of_min_profileHeatmap4, l2_norm_profileHeatmap4 = self.on_print_norm4_cluster_profiles( os.path.join( path, 'norm_0.4_' + base + '.pdf' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, sum_of_min_profileHeatmap4, os.path.join( path, 'sum_of_min_0.4_' + base + '.xls' ) )
+        self.write_profileHeatmapCSV( self.pipeline.pdc.treatments, l2_norm_profileHeatmap4, os.path.join( path, 'l2_norm_0.4_' + base + '.xls' ) )
+
+    def write_profileHeatmapCSV(self, treatments, heatmap, filename):
+
+        f = open( filename, 'w' )
+
+        f.write( '\t' )
+        for i in xrange( len( treatments ) ):
+
+            tr = treatments[ i ]
+
+            str = '%s' % tr.name
+            if i < len( treatments ) - 1:
+                str += '\t'
+
+            f.write( str )
+
+        f.write( '\n' )
+
+        for i in xrange( heatmap.shape[0] ):
+
+            tr = treatments[ i ]
+    
+            str = '%s\t' % tr.name
+
+            f.write( str )
+
+            for j in xrange( heatmap.shape[1] ):
+
+                str = '%f' % heatmap[ i, j ]
+                if j < heatmap.shape[1] - 1:
+                    str += '\t'
+
+                f.write( str )
+            f.write( '\n' )
+
+        if len( treatments ) > 14:
+
+            f.write( '\n' )
+
+            f.write( '\t' )
+            for i in xrange( len( treatments ) ):
+    
+                if i % 2 != 0:
+                    continue
+
+                tr = treatments[ i ]
+    
+                str = '%s' % tr.name
+                if i < len( treatments ) - 1:
+                    str += '\t'
+    
+                f.write( str )
+    
+            f.write( '\n' )
+
+            f.write( 'self match\t' )
+            for i in xrange( heatmap.shape[0] ):
+
+                if i % 2 != 0:
+                    continue
+
+                str = '%f' % heatmap[ i, i+1 ]
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'median to others\t' )
+            for i in xrange( heatmap.shape[0] ):
+    
+                if i % 2 != 0:
+                    continue
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                med = numpy.median( heatmap[ [i,i+1] ][ :, mask ] )
+
+                str = '%f' % med
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'mean to others\t' )
+            for i in xrange( heatmap.shape[0] ):
+    
+                if i % 2 != 0:
+                    continue
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                med = numpy.mean( heatmap[ [i,i+1] ][ :, mask ] )
+
+                str = '%f' % med
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'min to others\t' )
+            for i in xrange( heatmap.shape[0] ):
+    
+                if i % 2 != 0:
+                    continue
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                try:
+                    min = numpy.min( heatmap[ [i,i+1] ][ :, mask ] )
+                except:
+                    min = numpy.nan
+
+                str = '%f' % min
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'max to others\t' )
+            for i in xrange( heatmap.shape[0] ):
+    
+                if i % 2 != 0:
+                    continue
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                try:
+                    max = numpy.max( heatmap[ [i,i+1] ][ :, mask ] )
+                except:
+                    max = numpy.nan
+
+                str = '%f' % max
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'min to others - self match\t' )
+            for i in xrange( heatmap.shape[0] ):
+
+                if i % 2 != 0:
+                    continue
+
+                self_match = heatmap[ i, i+1 ]
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                try:
+                    min = numpy.min( heatmap[ [i,i+1] ][ :, mask ] )
+                except:
+                    min = numpy.nan
+
+                str = '%f' % ( min - self_match )
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+            f.write( 'self match - max to others\t' )
+            for i in xrange( heatmap.shape[0] ):
+
+                if i % 2 != 0:
+                    continue
+
+                self_match = heatmap[ i, i+1 ]
+
+                mask = numpy.ones( ( heatmap.shape[0], ), dtype=bool )
+                mask[ i ] = False
+                mask[ i+1 ] = False
+                mask2 = numpy.any( numpy.isnan( heatmap[ [i,i+1] ] ), axis=0 )
+                mask = numpy.logical_and( mask, numpy.invert( mask2 ) )
+
+                try:
+                    max = numpy.min( heatmap[ [i,i+1] ][ :, mask ] )
+                except:
+                    max = numpy.nan
+
+                str = '%f' % ( self_match - max )
+                if i < heatmap.shape[0] - 2:
+                    str += '\t'
+
+                f.write( str )
+
+            f.write( '\n' )
+
+        f.close()
+
+
+    def on_print_cells(self):
+
+        printer = QPrinter( QPrinter.HighResolution | QPrinter.Color | QPrinter.Portrait | QPrinter.A4 )
+        dialog = QPrintDialog( printer, self )
+        dialog.setWindowTitle( 'Print cell galleries' )
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        print 'printing cell galleries...'
+
+        pixmap_width = self.gallery.pixmap_width
+        pixmap_height = self.gallery.pixmap_height
+
+        PIXMAP_SPACING = 8
+
+        num_of_rows = int( ( printer.height() + PIXMAP_SPACING ) / float( pixmap_height + PIXMAP_SPACING ) )
+        num_of_columns = int( ( printer.width() + PIXMAP_SPACING ) / float( pixmap_width + PIXMAP_SPACING ) )
+
+        painter = QPainter()
+        painter.begin( printer )
+
+        self.gallery.hide()
+
+        for groupId in xrange( self.get_number_of_groups() ):
+
+            selectionMask = self.get_full_id_mask_for_group( groupId )
+
+            if selectionMask.any():
+
+                selectionIds = self.pdc.objFeatures[ : , self.pdc.objObjectFeatureId ][ selectionMask ]
+    
+                featureFactory = CellFeatureTextFactory( self.pdc )
+                pixmapFactory = CellPixmapFactory( self.pdc, self.channelMapping )
+    
+                caption = 'Showing %d cells from %s %s' % ( num_of_rows*num_of_columns, self.get_group_policy_name(), self.get_group_name( groupId ) )
+    
+                self.gallery.on_selection_changed( -1, selectionIds, pixmapFactory, featureFactory )
+    
+                self.gallery.on_print( printer, painter, caption )
+
+                if groupId < self.get_number_of_groups() - 1:
+                    printer.newPage()
+
+                sys.stdout.write( '\r  %s %s ...' % ( self.get_group_policy_name(), self.get_group_name( groupId ) ) )
+                sys.stdout.flush()
+
+        sys.stdout.write( '\n' )
+        sys.stdout.flush()
+
+        painter.end()
+
+        self.statusBar().showMessage( 'Finished printing cells galleries', 2000 )
+
+        print 'done'
 
 
     def on_show_plots(self, groupId=-1):
@@ -253,8 +741,9 @@ class ResultsWindow(QWidget):
     def on_selection_changed(self, groupId, index=-1, clicked=True, button=-1):
 
         if groupId >= 0:
+            objectId = self.features[ index, self.pdc.objObjectFeatureId ]
             self.mpl_toolbar.set_selection(
-                index,
+                objectId,
                 self.get_group_policy_name(),
                 self.get_group_name( groupId )
             )
@@ -352,7 +841,7 @@ class ResultsWindow(QWidget):
             y_weight = 1 / ( y_lim[1] - y_lim[0] )
             d = ( x_weight * ( self.x_data - mx ) ) ** 2 + ( y_weight * ( self.y_data - my ) ) ** 2
             min_i = -1
-            min_d = 4 * x_weight
+            min_d = 0.0001
             for i in xrange(d.shape[0]):
                 if d[i] < min_d:
                     min_i = i
@@ -362,9 +851,11 @@ class ResultsWindow(QWidget):
             if index >= 0:
     
                 groupId = self.get_group_id( index )
-    
+
+                objectId = self.features[ index, self.pdc.objObjectFeatureId ]
+
                 self.mpl_toolbar.set_mouseover(
-                    index,
+                    objectId,
                     self.get_group_policy_name(),
                     self.get_group_name( groupId)
                 )
@@ -424,43 +915,56 @@ class ResultsWindow(QWidget):
 
         if mx != None and my != None:
 
+            #print 'x,y: (%f,%f)' % ( event.x, event.y )
+            #print 'mx,my: (%f,%f)' % ( event.xdata, event.ydata )
+
             x_lim = self.axes.get_xlim()
             y_lim = self.axes.get_ylim()
+            #print 'lim: [ (%f,%f) (%f,%f) ]' % ( x_lim[0], x_lim[1], y_lim[0], y_lim[1] )
             x_weight = 1 / ( x_lim[1] - x_lim[0] )
             y_weight = 1 / ( y_lim[1] - y_lim[0] )
             d = ( x_weight * ( self.x_data - mx ) ) ** 2 + ( y_weight * ( self.y_data - my ) ) ** 2
+            #print 'weight: (%f,%f)' % ( x_weight, y_weight )
+            #print d
             min_i = -1
-            min_d = 4 * x_weight
+            #min_d = 4 * x_weight
+            min_d = 0.0001
             for i in xrange(d.shape[0]):
                 if d[i] < min_d:
                     min_i = i
                     min_d = d[i]
             index = min_i
-    
+
+            #print 'min_d=%f' % min_d
+
             if index >= 0:
     
                 focusId = index
                 groupId = self.get_group_id( index )
-        
+
                 self.picked_group = groupId
                 self.picked_index = focusId
 
+                objectId = self.features[ self.picked_index, self.pdc.objObjectFeatureId ]
+
+                #print 'index=%d, focusId=%d, groupId=%d, objectId=%d' % (index,focusId,groupId, objectId)
+
                 self.mpl_toolbar.set_selection(
-                    self.picked_index,
+                    objectId,
                     self.get_group_policy_name(),
                     self.get_group_name()
                 )
                 self.statusBarLabel.setText( "You selected %s '%s' and cell #%d" % \
                                     ( self.get_group_policy_name(),
                                       self.get_group_name(),
-                                      self.picked_index ) )
+                                      objectId ) )
         
                 self.on_selection_changed( groupId, focusId, True, event.button )
     
             else:
     
                 self.mpl_toolbar.clear_selection()
-                self.statusBar.showMessage( 'invalid selection', 2000 )
+                self.statusBar().showMessage( 'invalid selection', 2000 )
                 self.statusBarLabel.setText( 'no %s selected' % self.get_group_policy_name() )
 
                 self.picked_group = None
@@ -532,6 +1036,17 @@ class ResultsWindow(QWidget):
             return 'cluster'
 
 
+    def get_full_id_mask_for_group(self, groupId):
+
+        mask = numpy.empty( ( self.pdc.objFeatures.shape[0], ), dtype=numpy.bool )
+        mask[:] = False
+
+        mask2 = self.get_id_mask_for_group( groupId )
+
+        mask[ self.pipeline.nonControlCellMask ] = mask2
+
+        return mask
+
     def get_id_mask_for_group(self, groupId):
 
         if groupId >= 0:
@@ -586,6 +1101,8 @@ class ResultsWindow(QWidget):
             values = self.features[ : , feature_id ]
             #print 'featureId=%d' % feature_id
 
+        #elif data_name == 'mahal_dist':
+        #    values = self.pipeline.nonControlMahalDist
         #elif data_name.startswith( 'mahal ' ):
         #    feature_id = int( data_name[ len( 'mahal ' ) : ] )
         #    values = self.mahalFeatures[ : , feature_id ]
@@ -640,6 +1157,32 @@ class ResultsWindow(QWidget):
             population[ k ] = k_population
         plot_window.draw_barplot( plot_index, caption, population )
 
+    def draw_cluster_stddevs(self, plot_window, plot_index, caption, clusters, partition, points):
+        # Compute standard-deviation vector for each cluster
+        stddevs = numpy.empty( clusters.shape )
+        for i in xrange( clusters.shape[ 0 ] ):
+            partition_mask = partition[:] == i
+            stddevs[ i ] = numpy.std( points[ partition_mask ], axis=0 )
+
+        from ..core import distance
+
+        stddev_m = numpy.empty( ( clusters.shape[0], clusters.shape[0] ) )
+        dist_m = distance.minkowski_cdist( clusters, clusters )
+        for i in xrange( clusters.shape[ 0 ] ):
+            for j in xrange( clusters.shape[ 0 ] ):
+                # compute the normalized distance vector of the clusters
+                dist = dist_m[ i, j ]
+                dvec = clusters[i] - clusters[j]
+                dvec_norm = dvec / dist
+                # compute projected standard deviations
+                proj_stddev1 = abs( numpy.sum( dvec_norm * stddevs[i] ) )
+                proj_stddev2 = abs( numpy.sum( dvec_norm * stddevs[j] ) )
+                #proj_stddev = min( proj_stddev1, proj_stddev2 )
+                proj_stddev = proj_stddev1 + proj_stddev2
+                stddev_m[ i, j ] = proj_stddev
+
+        plot_window.draw_heatmap( plot_index, caption, stddev_m, interpolation='nearest' )
+
     def draw_inter_cluster_distances(self, plot_window, plot_index, caption, inter_cluster_distances):
 
             plot_window.draw_heatmap(
@@ -649,14 +1192,292 @@ class ResultsWindow(QWidget):
                 interpolation='nearest'
             )
 
+    def draw_hcluster_dendrogram_custom(self, fig, axes, custom_data, bottom_shift=0.0, **mpl_kwargs):
+
+        import matplotlib
+        import matplotlib.pylab
+        be = matplotlib.pylab.get_backend()
+        matplotlib.pylab.switch_backend( 'Agg' )
+        #artist = matplotlib.pylab.figure()
+        Z = custom_data[:,:4]
+        import hcluster
+        hcluster.dendrogram(
+            self.pipeline.Z[:,:4],
+            30,
+            'lastp'
+        )
+        artist = matplotlib.pylab.gca()
+        print artist, id( artist)
+        print artist.artists
+        print artist.get_figure()
+        print artist.get_axes()
+        for p in artist.patches:
+            axes.add_patch( p )
+        for a in artist.artists:
+            axes.add_artist( a )
+        for c in artist.collections:
+            axes.add_collection( c )
+        for l in artist.lines:
+            axes.add_line( l )
+        for t in artist.tables:
+            axes.add_table( t )
+        matplotlib.pylab.switch_backend( be )
+
+    def draw_hcluster_dendrogram(self, plot_window, plot_index, caption):
+
+        plot_window.draw_custom( plot_index, caption, self.draw_hcluster_dendrogram_custom, self.pipeline.Z )
+
+    def draw_hcluster_size(self, plot_window, plot_index, caption):
+
+        plot_window.draw_lineplot( plot_index, caption, None, self.pipeline.Z[:,3] )
+
+    def draw_hcluster_dist(self, plot_window, plot_index, caption):
+
+        plot_window.draw_lineplot( plot_index, caption, None, self.pipeline.Z[:,2] )
+
+    def draw_hcluster_Z(self, plot_window, plot_index, caption, Z_index):
+
+        plot_window.draw_lineplot( plot_index, caption, None, self.pipeline.Z[:,Z_index] )
+
+    def on_draw_hcluster_plots( self, create=True ):
+
+        try:
+            self.hclustering_plot_window
+        except:
+            self.hclustering_plot_window = None
+        if self.hclustering_plot_window == None and create:
+            self.hclustering_plot_window = PlotWindow( 5, ( 3, 3, 3, 3, 3, 3 ) )
+        if create:
+            self.hclustering_plot_window.show()
+
+        if self.hclustering_plot_window != None:
+
+            if self.pipeline.nonControlPartition == None:
+                self.hclustering_plot_window.hide()
+
+            if self.hclustering_plot_window.isVisible():
+
+                #self.draw_hcluster_dendrogram(
+                #    self.hclustering_plot_window,
+                #    0,
+                #    'HCluster dendrogram'
+                #)
+
+                #self.draw_inter_cluster_distances(
+                #    self.hclustering_plot_window,
+                #    0,
+                #    'Pairwise distances between the clusters',
+                #    self.pipeline.nonControlInterClusterDistances
+                #)
+
+                self.draw_hcluster_dist(
+                    self.hclustering_plot_window,
+                    0,
+                    'Sample distances'
+                )
+
+                self.draw_hcluster_size(
+                    self.hclustering_plot_window,
+                    1,
+                    'Cluster sizes'
+                )
+
+                self.draw_hcluster_Z(
+                    self.hclustering_plot_window,
+                    2,
+                    'Number of clusters',
+                    4
+                )
+
+                self.draw_hcluster_Z(
+                    self.hclustering_plot_window,
+                    3,
+                    'Error summed square',
+                    5
+                )
+
+                """self.draw_hcluster_Z(
+                    self.hclustering_plot_window,
+                    4,
+                    'HCluster cluster count',
+                    6
+                )"""
+
+                self.draw_hcluster_Z(
+                    self.hclustering_plot_window,
+                    4,
+                    'Error summed square * Number of clusters',
+                    7
+                )
+
+
+    def draw_cluster_profile_comparison_custom(self, fig, axes, custom_data, bottom_shift=0.0, **mpl_kwargs):
+
+        profile1, profile2, x, x_labels = custom_data
+
+        min_profile = numpy.min( [ profile1, profile2 ], axis=0 )
+
+        axes.clear()
+
+        if 'facecolor' in mpl_kwargs:
+            del mpl_kwargs[ 'facecolor' ]
+        if not mpl_kwargs.has_key( 'alpha' ): mpl_kwargs[ 'alpha' ] = 0.75
+        if not mpl_kwargs.has_key( 'align' ): mpl_kwargs[ 'align' ] = 'center'
+
+        axes.bar( x, min_profile, color='yellow', **mpl_kwargs )
+
+        axes.bar( x, profile1 - min_profile, bottom=min_profile, color='green', **mpl_kwargs )
+
+        axes.bar( x, profile2 - min_profile, bottom=min_profile, color='red', **mpl_kwargs )
+
+        if x_labels != None:
+            axes.set_xticks( x )
+            x_labels = axes.set_xticklabels( x_labels, rotation='270' )
+            if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
+                fig.subplots_adjust( bottom=bottom_shift )
+
+            axes.grid( True )
+
+        return x_labels
+
+    def draw_cluster_profile_comparison(self, plot_window, plot_index, caption, treatmentId1, treatmentId2):
+
+        profile1 = self.pipeline.nonControlClusterProfiles[ treatmentId1 ]
+        profile2 = self.pipeline.nonControlClusterProfiles[ treatmentId2 ]
+
+        """trMask = self.features[ :, self.pdc.objTreatmentFeatureId ] == groupId
+
+        print 'trMask: %d' % ( numpy.sum( trMask ) )
+        values = numpy.zeros( ( self.pipeline.nonControlClusters.shape[0], ) )
+        for i in xrange( self.pipeline.nonControlClusters.shape[0] ):
+            values[ i ] = numpy.sum( self.partition[ trMask ] == i )
+            print '%d: %d' % ( i, values[ i ] )
+
+        print numpy.sum( values )"""
+
+        x_labels = []
+
+        for i in xrange( self.pipeline.nonControlClusters.shape[0] ):
+            label = '%d' % i
+            x_labels.append( label )
+
+        x = numpy.arange( self.pipeline.nonControlClusters.shape[0] )
+
+        plot_window.draw_custom( plot_index, caption, self.draw_cluster_profile_comparison_custom, [ profile1, profile2, x, x_labels ] )
+
+
+    def on_draw_cluster_profiles(self, treatmentId1=-1, treatmentId2=-1, create=True):
+
+        try:
+            self.cluster_profiles_window
+        except:
+            self.cluster_profiles_window = None
+        if self.cluster_profiles_window == None and create:
+            self.cluster_profiles_window = PlotWindow( 3, ( 1, 1, 1 ) )
+        if create:
+            self.cluster_profiles_window.show()
+
+        if self.cluster_profiles_window != None:
+
+            if self.pipeline.nonControlPartition == None:
+                self.cluster_profiles_window.hide()
+
+            if self.cluster_profiles_window.isVisible():
+
+                #self.draw_hcluster_dendrogram()
+
+                self.draw_cluster_profile(
+                    self.cluster_profiles_window,
+                    0,
+                    'Cluster profile of treatment %s' % self.pipeline.pdc.treatments[ treatmentId1 ].name,
+                    treatmentId1,
+                    facecolor='yellow'
+                )
+
+                self.draw_cluster_profile(
+                    self.cluster_profiles_window,
+                    1,
+                    'Cluster profile of treatment %s' % self.pipeline.pdc.treatments[ treatmentId2 ].name,
+                    treatmentId2,
+                    facecolor='yellow'
+                )
+
+                self.draw_cluster_profile_comparison(
+                    self.cluster_profiles_window,
+                    2,
+                    'Comparison of both cluster profiles',
+                    treatmentId1,
+                    treatmentId2
+                )
+
+
+
+    def create_cluster_profile_window(self):
+
+        try: self.cluster_profiles_window.close()
+        except: pass
+
+
+        print 'computing cluster profiles heatmap...'
+
+        profileHeatmap = numpy.zeros( ( self.pipeline.nonControlClusterProfiles.shape[0], self.pipeline.nonControlClusterProfiles.shape[0] ) )
+
+        normClusterProfiles = numpy.empty( self.pipeline.nonControlClusterProfiles.shape )
+
+        for i in xrange( self.pipeline.nonControlClusterProfiles.shape[0] ):
+
+            profile1 = self.pipeline.nonControlClusterProfiles[ i ]
+            #abs_value = numpy.sqrt( numpy.sum( profile1 ** 2 ) )
+            abs_value = float( numpy.sum( profile1 ) )
+            norm_profile1 = profile1 / abs_value
+            normClusterProfiles[ i ] = norm_profile1
+
+            for j in xrange( 0, i ):
+    
+                profile2 = self.pipeline.nonControlClusterProfiles[ j ]
+                #abs_value = numpy.sqrt( numpy.sum( profile2 ** 2 ) )
+                abs_value = float( numpy.sum( profile2 ) )
+                norm_profile2 = profile2 / abs_value
+                # L2-norm
+                dist = numpy.sqrt( numpy.sum( ( norm_profile1 - norm_profile2 ) ** 2 ) )
+                # chi-square
+                #dist =  ( norm_profile1 - norm_profile2 ) ** 2 / ( norm_profile1 + norm_profile2 )
+                #dist[ numpy.logical_and( norm_profile1 == 0, norm_profile2 == 0 ) ] = 0.0
+                #dist = numpy.sum( dist )
+                #print '%s <-> %s: %f' % ( self.pipeline.pdc.treatments[ i ].name, self.pipeline.pdc.treatments[ j ].name, dist )
+    
+                profileHeatmap[ i, j ] = dist
+                profileHeatmap[ j, i ] = dist
+
+        print 'done'
+
+        #max = numpy.max( profileHeatmap )
+        #profileHeatmap = profileHeatmap / max
+
+        self.cluster_profiles_window = ClusterProfilesWindow(
+            self.pipeline.pdc,
+            normClusterProfiles,
+            profileHeatmap,
+            ( 1, 2 )
+        )
+        self.cluster_profiles_window.show()
+
     def on_draw_clustering_plots(self, create=True):
+
+        #self.on_draw_cluster_profiles( 0, 1, True )
+
+        self.create_cluster_profile_window()
+
+        return
+
+        #self.on_draw_hcluster_plots( create )
 
         try:
             self.clustering_plot_window
         except:
             self.clustering_plot_window = None
         if self.clustering_plot_window == None and create:
-            self.clustering_plot_window = PlotWindow( 3, ( 3, 2, 2 ) )
+            self.clustering_plot_window = PlotWindow( 2, ( 3, 1 ) )
         if create:
             self.clustering_plot_window.show()
 
@@ -666,6 +1487,8 @@ class ResultsWindow(QWidget):
                 self.clustering_plot_window.hide()
 
             if self.clustering_plot_window.isVisible():
+
+                #self.draw_hcluster_dendrogram()
 
                 self.draw_inter_cluster_distances(
                     self.clustering_plot_window,
@@ -682,23 +1505,106 @@ class ResultsWindow(QWidget):
                     self.pipeline.nonControlPartition
                 )
 
-                self.draw_weights(
+                """self.draw_cluster_stddevs(
                     self.clustering_plot_window,
+                    1,
+                    'Stddev of each cluster',
+                    self.pipeline.nonControlClusters,
+                    self.pipeline.nonControlPartition,
+                    self.pipeline.nonControlNormFeatures
+                )"""
+
+
+    def draw_total_treatment_population(self, plot_window, plot_index, caption):
+
+        # retrieve data for treatment population
+        population = numpy.empty( len( self.pdc.treatments ) )
+        x = numpy.arange( len( self.pdc.treatments ) )
+        x_labels = []
+        for tr in self.pdc.treatments:
+            tr_mask = self.pdc.objFeatures[ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
+            tr_population = numpy.sum( tr_mask )
+            population[ tr.rowId ] = tr_population
+            x_labels.append( tr.name )
+        plot_window.draw_barplot( plot_index, caption, population, x, x_labels, facecolor='blue' )
+
+    def draw_nonControl_treatment_population(self, plot_window, plot_index, caption):
+
+        # retrieve data for treatment population
+        population = numpy.empty( len( self.pdc.treatments ) )
+        x = numpy.arange( len( self.pdc.treatments ) )
+        x_labels = []
+        for tr in self.pdc.treatments:
+            tr_mask = self.features[ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
+            tr_population = numpy.sum( tr_mask )
+            population[ tr.rowId ] = tr_population
+            x_labels.append( tr.name )
+        plot_window.draw_barplot( plot_index, caption, population, x, x_labels, facecolor='blue' )
+
+    def draw_treatment_penetrance(self, plot_window, plot_index, caption):
+
+        # retrieve data for treatment population
+        penetrance = numpy.empty( len( self.pdc.treatments ) )
+        x = numpy.arange( len( self.pdc.treatments ) )
+        x_labels = []
+        for tr in self.pdc.treatments:
+            total_tr_mask = self.pdc.objFeatures[ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
+            nonControl_tr_mask = self.features[ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
+            total_tr_population = numpy.sum( total_tr_mask )
+            nonControl_tr_population = numpy.sum( nonControl_tr_mask )
+            penetrance[ tr.rowId ] = 100.0 * nonControl_tr_population / float( total_tr_population )
+            x_labels.append( tr.name )
+        plot_window.draw_barplot( plot_index, caption, penetrance, x, x_labels, facecolor='blue' )
+
+    def on_draw_general_plots(self, create=True):
+
+        try:
+            self.general_plot_window
+        except:
+            self.general_plot_window = None
+        if self.general_plot_window == None and create:
+            self.general_plot_window = PlotWindow( 3, ( 1, 1, 1 ) )
+        if create:
+            self.general_plot_window.show()
+
+        if self.general_plot_window != None:
+
+            print 'drawing general plots'
+
+            if self.general_plot_window.isVisible():
+
+                self.draw_total_treatment_population(
+                    self.general_plot_window,
+                    0,
+                    'Total population size of each treatment'
+                )
+
+                self.draw_nonControl_treatment_population(
+                    self.general_plot_window,
+                    1,
+                    'Non-control population size of each treatment'
+                )
+
+                self.draw_treatment_penetrance(
+                    self.general_plot_window,
                     2,
-                    'Features importance'
+                    'Penetrance of each treatment'
                 )
 
 
+    def draw_cluster_profile(self, plot_window, plot_index, caption, groupId, **kwargs):
 
-    def draw_treatment_to_cluster_distribution(self, plot_window, plot_index, caption, groupId):
+        values = self.pipeline.nonControlClusterProfiles[ groupId ]
 
-        values,groups = self.select_data( self.pdc.objTreatmentFeatureId )
+        """trMask = self.features[ :, self.pdc.objTreatmentFeatureId ] == groupId
 
-        trMask = self.features[ :, self.pdc.objTreatmentFeatureId ] == groupId
-
+        print 'trMask: %d' % ( numpy.sum( trMask ) )
         values = numpy.zeros( ( self.pipeline.nonControlClusters.shape[0], ) )
         for i in xrange( self.pipeline.nonControlClusters.shape[0] ):
             values[ i ] = numpy.sum( self.partition[ trMask ] == i )
+            print '%d: %d' % ( i, values[ i ] )
+
+        print numpy.sum( values )"""
 
         bin_labels = []
         bin_rescale = None
@@ -709,7 +1615,7 @@ class ResultsWindow(QWidget):
 
         x = numpy.arange( self.pipeline.nonControlClusters.shape[0] )
 
-        plot_window.draw_barplot(plot_index, caption, values, x, bin_labels )
+        plot_window.draw_barplot(plot_index, caption, values, x, bin_labels, **kwargs )
 
     def draw_intra_cluster_distribution(self, plot_window, plot_index, caption, groupId):
 
@@ -737,7 +1643,7 @@ class ResultsWindow(QWidget):
             ratio = numpy.sum( values[:] == tr.rowId )
             ratio /= float( tr_obj_count )
             ratio *= 100.0
-            label = '%s\n%d%%' % ( tr.name, ratio )
+            label = '%s\n%0.1f%%' % ( tr.name, ratio )
             bin_labels.append( label )
         plot_window.draw_histogram( plot_index, caption, values, bins, bin_labels, bin_rescale )
 
@@ -755,8 +1661,14 @@ class ResultsWindow(QWidget):
         plot_window.draw_barplot( plot_index, caption, population, x, x_labels, facecolor='blue' )
 
     def draw_cluster_similarities(self, plot_window, plot_index, caption, groupId):
-    
-        weights = None
+
+        similarities = self.pipeline.nonControlInterClusterDistances[ groupId ]
+
+        x = numpy.arange( similarities.shape[0] )
+
+        plot_window.draw_barplot( plot_index, caption, similarities, x, facecolor='orange' )
+
+        """weights = None
         if self.pipeline.nonControlWeights != None:
             # retrieve data for cluster population
             #weights = self.pipeline.nonControlWeights[ groupId ]
@@ -792,7 +1704,7 @@ class ResultsWindow(QWidget):
             values[ k ] = numpy.sum( new_partition == k )
         x = numpy.arange( values.shape[0] )
 
-        plot_window.draw_barplot( plot_index, caption, values, x, facecolor='orange' )
+        plot_window.draw_barplot( plot_index, caption, values, x, facecolor='orange' )"""
 
 
     def draw_weights(self, plot_window, plot_index, caption, groupId=-1):
@@ -801,14 +1713,35 @@ class ResultsWindow(QWidget):
             # retrieve data for cluster population
             #weights = self.pipeline.nonControlWeights[ groupId ]
             weights = self.pipeline.nonControlWeights
-            #if len( weights.shape ) > 1:
-            #    if groupId < 0:
-            #        groupId = self.picked_group
-            #        if groupId < 0:
-            #            return
-            #    weights = weights[ groupId ]
-            weights = weights[0]
-            plot_window.draw_barplot( plot_index, caption, weights, facecolor='purple' )
+            if len( weights.shape ) > 1:
+                if groupId < 0:
+                    groupId = self.picked_group
+                    if groupId < 0:
+                        return
+                weights = weights[ groupId ]
+            x = numpy.arange( weights.shape[0] )
+            plot_window.draw_barplot( plot_index, caption, weights, x, facecolor='purple' )
+
+    def draw_feature_importance(self, plot_window, plot_index, caption, groupId):
+
+        try:
+            self.__norm_features
+        except:
+            self.__norm_features, valid_mask = self.pipeline.compute_normalized_features( self.supercluster_index )
+            self.__feature_importance = numpy.empty(
+                ( self.get_number_of_groups(), self.__norm_features.shape[ 1 ] )
+            )
+            for i in xrange( self.get_number_of_groups() ):
+                point_mask = self.get_id_mask_for_group( i )
+                self.__feature_importance[ i ] = self.pipeline.compute_feature_importance(
+                    self.__norm_features,
+                    point_mask
+                )
+
+        importance = self.__feature_importance[ groupId ]
+        x = numpy.arange( importance.shape[0] )
+        plot_window.draw_barplot( plot_index, caption, importance, x, facecolor='purple' )
+
 
     def on_draw_plots(self, groupId=-1, create=True):
 
@@ -830,24 +1763,17 @@ class ResultsWindow(QWidget):
         if self.__plot_window != None and self.__plot_window.isVisible():
 
             #if groupId < 0:
-            #    #self.statusBar.showMessage( 'You have to select a group first!', 2000 )
+            #    #self.statusBar().showMessage( 'You have to select a group first!', 2000 )
             #    return
 
-            if self.pipeline.nonControlPartition == None:
-                self.__plot_window.set_number_of_plots( 1 )
-                # TODO
-                #self.__plot_window = change_plot_window(
-                #    self.__plot_window,
-                #    1
-                #)
+            if self.group_policy == self.GROUP_POLICY_TREATMENT:
+                if self.pipeline.nonControlPartition == None:
+                    self.__plot_window.set_number_of_plots( 1 )
+                else:
+                    self.__plot_window.set_number_of_plots( 2, ( 1, 1 ) )
+
             else:
                 self.__plot_window.set_number_of_plots( 2, ( 3, 2 ) )
-                # TODO
-                #self.__plot_window = change_plot_window(
-                #    self.__plot_window,
-                #    2,
-                #    ( 2, 1 ),
-                #)
 
             if self.group_policy == self.GROUP_POLICY_TREATMENT:
 
@@ -858,12 +1784,19 @@ class ResultsWindow(QWidget):
                     groupId
                 )
 
+                #self.draw_feature_importance(
+                #    self.__plot_window,
+                #    0,
+                #    'Feature importance',
+                #    groupId
+                #)
+
                 if self.pipeline.nonControlPartition != None:
 
-                    self.draw_treatment_to_cluster_distribution(
+                    self.draw_cluster_profile(
                         self.__plot_window,
                         1,
-                        'Distribution of the selected treatment along the clusters',
+                        'Cluster profile of the selected treatment',
                         groupId
                     )
 
@@ -881,7 +1814,7 @@ class ResultsWindow(QWidget):
                     self.draw_cluster_similarities(
                         self.__plot_window,
                         1,
-                        'Similarity to other clusters',
+                        'Distance to other clusters',
                         groupId
                     )
 
@@ -895,7 +1828,7 @@ class ResultsWindow(QWidget):
                     #self.draw_weights(
                     #    self.__plot_window,
                     #    2,
-                    #    'Weights',
+                    #    'Feature importance',
                     #    groupId
                     #)
 
@@ -917,11 +1850,11 @@ class ResultsWindow(QWidget):
         if self.histogram != None and self.histogram.isVisible():
 
             if groupId < 0:
-                self.statusBar.showMessage( 'You have to select a group first!', 2000 )
+                self.statusBar().showMessage( 'You have to select a group first!', 2000 )
             else:
                 index = self.histogram_combo.currentIndex()
                 name = str( self.histogram_combo.itemData( index ).toString() )
-                values,groups = self.select_data( name )
+                values,groups = self.select_data_by_name( name )
                 if name.startswith( 'feature ' ):
                     feature_id = int( name[ len( 'feature ' ) : ] )
                 else:
@@ -944,17 +1877,30 @@ class ResultsWindow(QWidget):
                             ratio = numpy.sum( values[:] == tr.rowId )
                             ratio /= float( tr_obj_count )
                             ratio *= 100.0
+                            if tr_obj_count == 0:
+                                ratio = 0
                             #ratio = values[ tr.rowId ] / float( tr_obj_count ) * 100.0
                             #ratio = values[ tr.rowId ]
                             #ratio = tr_obj_count
-                            label = '%s\n%d%%' % ( tr.name, ratio )
+                            label = '%s\n%d%%' % ( tr.name, int( ratio ) )
                             bin_labels.append( label )
-                self.histogram.draw_histogram( 0, values, bins, bin_labels, bin_rescale )
+                value_name = str( self.histogram_combo.currentText() )
+                plot_label = 'Histogram of %s for %s %d' % ( value_name, self.get_group_policy_name(), self.picked_group )
+                self.histogram.draw_histogram( 0, plot_label, values, bins, bin_labels, bin_rescale )
                 self.histogram.show()
 
 
-    def on_number_of_clusters_changed(self, number_of_clusters):
-        self.number_of_clusters = number_of_clusters
+    def on_cluster_param1_changed(self, param1):
+        self.cluster_param1 = param1
+
+    def on_cluster_param2_changed(self, param2):
+        self.cluster_param2 = param2
+
+    def on_cluster_param3_changed(self, param3):
+        self.cluster_param3 = param3
+
+    def on_cluster_param4_changed(self, param4):
+        self.cluster_param4 = param4
 
     def on_cluster_combo_changed(self, index):
         self.supercluster_index = index
@@ -962,11 +1908,72 @@ class ResultsWindow(QWidget):
     def on_supercluster_changed(self, index):
         self.supercluster_index = index
 
+        try:
+            self.__norm_features, valid_mask = self.pipeline.compute_normalized_features( self.supercluster_index )
+            self.__feature_importance = numpy.empty(
+                ( self.get_number_of_groups(), self.__norm_features.shape[ 1 ] )
+            )
+            for i in xrange( self.get_number_of_groups() ):
+                point_mask = self.get_id_mask_for_group( i )
+                self.__feature_importance[ i ] = self.pipeline.compute_feature_importance(
+                    self.__norm_features,
+                    point_mask
+                )
+            self.on_draw_plots( -1, False )
+        except:
+            pass
+
+
+    def on_clustering_finished(self):
+
+        result = self.pipeline.get_result()
+
+        self.__clustering_running = False
+
+        self.pipeline.disconnect( self.pipeline, SIGNAL('finished()'), self.on_clustering_finished )
+
+        if result:
+
+            self.partition = self.pipeline.nonControlPartition
+    
+            self.features = self.pipeline.nonControlFeatures
+            #self.mahalFeatures = self.pipeline.nonControlTransformedFeatures
+            #self.featureNames = self.pipeline.featureNames
+            #self.partition = self.pipeline.nonControlPartition
+            #self.number_of_clusters = self.pipeline.nonControlClusters.shape[0]
+    
+            self.statusBar().showMessage( 'Finished clustering!', 2000 )
+    
+            #self.supercluster_combo.setEnabled( True )
+            #self.supercluster_label.setEnabled( True )
+    
+            self.clusteringRadiobutton.setEnabled( True )
+            self.clusteringRadiobutton.setChecked( True )
+    
+            self.group_combo.clear()
+            for i in xrange( self.get_number_of_groups() ):
+                self.group_combo.addItem( str( i ), i )
+    
+            self.group_combo.setCurrentIndex( -1 )
+    
+            self.on_group_policy_changed( self.GROUP_POLICY_CLUSTERING )
+
+
     def on_cluster_button(self):
 
-        self.statusBar.showMessage( 'Running clustering...' )
+        if not self.__clustering_running:
 
-        self.pipeline.run_clustering( self.supercluster_index, self.number_of_clusters)
+            self.statusBar().showMessage( 'Running clustering...' )
+    
+            method = str( self.cluster_method_combo.itemData( self.cluster_method_combo.currentIndex() ).toString() )
+            #self.pipeline.run_clustering( method, self.supercluster_index, self.cluster_param1, self.cluster_param2, self.cluster_param3 )
+    
+            self.pipeline.connect( self.pipeline, SIGNAL('finished()'), self.on_clustering_finished )
+
+            self.__clustering_running = True
+            self.pipeline.start_clustering( method, self.supercluster_index, self.cluster_param1, self.cluster_param2, self.cluster_param3, self.cluster_param4 )
+
+        return
 
         """#self.pipeline.run_clustering( self.number_of_clusters )
 
@@ -1015,7 +2022,7 @@ class ResultsWindow(QWidget):
         #self.partition = self.pipeline.nonControlPartition
         #self.number_of_clusters = self.pipeline.nonControlClusters.shape[0]
 
-        self.statusBar.showMessage( 'Finished clustering!', 2000 )
+        self.statusBar().showMessage( 'Finished clustering!', 2000 )
 
         #self.supercluster_combo.setEnabled( True )
         #self.supercluster_label.setEnabled( True )
@@ -1052,8 +2059,9 @@ class ResultsWindow(QWidget):
 
         self.picked_group = self.get_group_id( self.picked_index )
 
+        objectId = self.features[ self.picked_index, self.pdc.objObjectFeatureId ]
         self.mpl_toolbar.set_selection(
-            self.picked_index,
+            objectId,
             self.get_group_policy_name(),
             self.get_group_name()
         )
@@ -1070,6 +2078,8 @@ class ResultsWindow(QWidget):
                 name = self.pdc.treatments[ i ].name
             self.group_combo.addItem( name, i )
 
+        #self.print_cluster_profiles_button.setEnabled( True )
+
         self.merge_cluster_combo.setEnabled( True )
         self.merge_cluster_combo.setCurrentIndex( -1 )
         if self.group_policy == self.GROUP_POLICY_CLUSTERING:
@@ -1085,6 +2095,10 @@ class ResultsWindow(QWidget):
         if self.group_policy == self.GROUP_POLICY_CLUSTERING:
             self.on_draw_clustering_plots( True )
 
+        for i in xrange( self.pipeline.nonControlClusters.shape[0] ):
+            p_mask = self.pipeline.nonControlPartition == i
+            print 'cluster %d -> %d' % ( i,  numpy.sum( p_mask ) )
+
         self.on_draw_plots( -1, False )
 
         self.last_group = None
@@ -1095,24 +2109,16 @@ class ResultsWindow(QWidget):
 
     def on_view_all_cells(self):
 
-        #if self.histogram != None and self.histogram.isVisible():
-        #    self.on_draw_histogram()
+        cell_mask_name = str( self.__view_cell_mask_combo.currentText() )
+        cell_mask, caption = self.__cell_mask_dict[ cell_mask_name ]
 
-        selectionMask = self.get_id_mask_for_group( -1 )
+        self.view_cells( cell_mask, self.picked_index, caption )
 
-        selectionIds = self.pdc.objFeatures[ : , self.pdc.objObjectFeatureId ][ selectionMask ]
-
-        featureFactory = CellFeatureTextFactory( self.pdc, self.pipeline.nonControlCellMask )
-        pixmapFactory = CellPixmapFactory( self.pdc, self.channelMapping, self.pipeline.nonControlCellMask )
-
-        self.gallery.on_selection_changed(-1, selectionIds, pixmapFactory, featureFactory)
-        self.gallery.update_caption(
-            'Showing all cells'
-        )
-        self.gallery.show()
 
 
     def build_widget(self):
+
+        self.main_frame = QWidget()
 
         # Create the mpl Figure and FigCanvas objects. 
         # 5x4 inches, 100 dots-per-inch
@@ -1121,7 +2127,7 @@ class ResultsWindow(QWidget):
         #self.fig = Figure((5.0, 4.0), dpi=self.dpi)
         self.fig = pyplot.figure()
         self.canvas = FigureCanvas(self.fig)
-        self.canvas.setParent(self)
+        self.canvas.setParent(self.main_frame)
 
         # Since we have only one plot, we can use add_axes 
         # instead of add_subplot, but then the subplot
@@ -1168,7 +2174,10 @@ class ResultsWindow(QWidget):
         self.group_combo = QComboBox()
 
         for i in xrange( self.get_number_of_groups() ):
-            self.group_combo.addItem( str( i ), i )
+            name = str( i )
+            if self.group_policy == self.GROUP_POLICY_TREATMENT:
+                name = self.pdc.treatments[ i ].name
+            self.group_combo.addItem( name, i )
 
         self.group_combo.setCurrentIndex( -1 )
 
@@ -1201,6 +2210,13 @@ class ResultsWindow(QWidget):
         self.merge_cluster_combo.setEnabled( False )
         self.connect( self.merge_cluster_combo, SIGNAL('activated(int)'), self.on_merge_cluster_combo_activated )
 
+        #self.print_cells_button = QPushButton( 'Print cell galleries' )
+        #self.connect( self.print_cells_button, SIGNAL('clicked()'), self.on_print_cells )
+
+        #self.print_cluster_profiles_button = QPushButton( 'Print cluster profiles' )
+        #self.print_cluster_profiles_button.setEnabled( False )
+        #self.connect( self.print_cluster_profiles_button, SIGNAL('clicked()'), self.on_print_cluster_profiles )
+
         hbox3 = QHBoxLayout()
         hbox3.addWidget( self.merge_cluster_button )
         hbox3.addWidget( self.merge_cluster_combo )
@@ -1211,6 +2227,8 @@ class ResultsWindow(QWidget):
         vbox.addWidget( self.show_plots_button )
         vbox.addWidget( self.dissolve_cluster_button )
         vbox.addLayout( hbox3 )
+        #vbox.addWidget( self.print_cells_button )
+        #vbox.addWidget( self.print_cluster_profiles_button )
 
         hbox.addLayout( vbox )
 
@@ -1223,24 +2241,64 @@ class ResultsWindow(QWidget):
         hbox.addWidget( groupBox )
 
 
-        self.number_of_clusters = len( self.pdc.treatments )
+        #self.cluster_param1 = len( self.pdc.treatments )
+        self.cluster_param1 = 250
 
         self.supercluster_index = 0
 
-        self.cluster_spinbox = QSpinBox()
-        self.cluster_spinbox.setRange( 1, 100 )
-        self.cluster_spinbox.setValue( self.number_of_clusters )
-        self.connect( self.cluster_spinbox, SIGNAL('valueChanged(int)'), self.on_number_of_clusters_changed )
+        self.cluster_param1_spinbox = QSpinBox()
+        self.cluster_param1_spinbox.setRange( 1, 100000 )
+        self.cluster_param1_spinbox.setValue( self.cluster_param1 )
+        self.connect( self.cluster_param1_spinbox, SIGNAL('valueChanged(int)'), self.on_cluster_param1_changed )
 
         cluster_button = QPushButton( 'Run clustering' )
         self.connect( cluster_button, SIGNAL('clicked()'), self.on_cluster_button )
 
         hbox2 = QHBoxLayout()
-        hbox2.addWidget( QLabel( 'Number of clusters:' ) )
-        hbox2.addWidget( self.cluster_spinbox, 1 )
+        hbox2.addWidget( QLabel( 'Param k:' ) )
+        hbox2.addWidget( self.cluster_param1_spinbox, 1 )
         #hbox2.addWidget( cluster_button, 1 )
 
-        self.supercluster_label = QLabel( 'Select feature set' )
+        self.cluster_param2 = -1
+        self.cluster_param2_spinbox = QSpinBox()
+        self.cluster_param2_spinbox.setRange( -1, 100000 )
+        self.cluster_param2_spinbox.setValue( self.cluster_param2 )
+        self.connect( self.cluster_param2_spinbox, SIGNAL('valueChanged(int)'), self.on_cluster_param2_changed )
+
+        hbox4 = QHBoxLayout()
+        hbox4.addWidget( QLabel( 'Param s:' ) )
+        hbox4.addWidget( self.cluster_param2_spinbox, 1 )
+
+        self.cluster_param3 = 2
+        self.cluster_param3_spinbox = QSpinBox()
+        self.cluster_param3_spinbox.setRange( 0, 100000 )
+        self.cluster_param3_spinbox.setValue( self.cluster_param3 )
+        self.connect( self.cluster_param3_spinbox, SIGNAL('valueChanged(int)'), self.on_cluster_param3_changed )
+
+        hbox6 = QHBoxLayout()
+        hbox6.addWidget( QLabel( 'Param p:' ) )
+        hbox6.addWidget( self.cluster_param3_spinbox, 1 )
+
+        self.cluster_param4 = 20
+        self.cluster_param4_spinbox = QSpinBox()
+        self.cluster_param4_spinbox.setRange( 0, 100000 )
+        self.cluster_param4_spinbox.setValue( self.cluster_param4 )
+        self.connect( self.cluster_param4_spinbox, SIGNAL('valueChanged(int)'), self.on_cluster_param4_changed )
+
+        hbox7 = QHBoxLayout()
+        hbox7.addWidget( QLabel( 'Param n:' ) )
+        hbox7.addWidget( self.cluster_param4_spinbox, 1 )
+
+        self.cluster_method_combo = QComboBox()
+        for descr,name in cluster.get_hcluster_methods():
+            self.cluster_method_combo.addItem( descr, name )
+        self.cluster_method_combo.setCurrentIndex( 0 )
+
+        hbox5 = QHBoxLayout()
+        hbox5.addWidget( QLabel( 'Method:' ) )
+        hbox5.addWidget( self.cluster_method_combo, 1 )
+
+        self.supercluster_label = QLabel( 'Feature set' )
         self.supercluster_combo = QComboBox()
         for i in xrange( len( self.pipeline.clusterConfiguration ) ):
             name,config = self.pipeline.clusterConfiguration[ i ]
@@ -1255,6 +2313,10 @@ class ResultsWindow(QWidget):
 
         vbox = QVBoxLayout()
         vbox.addLayout( hbox2 )
+        vbox.addLayout( hbox4 )
+        vbox.addLayout( hbox6 )  
+        vbox.addLayout( hbox7 )
+        vbox.addLayout( hbox5 )
         if not self.__simple_ui:
             vbox.addLayout( hbox3 )
         vbox.addWidget( cluster_button )
@@ -1284,6 +2346,9 @@ class ResultsWindow(QWidget):
 
         self.x_combo.addItem('n sorted by group','n_sorted')
         self.y_combo.addItem('n sorted by group','n_sorted')
+
+        #self.x_combo.addItem( 'mahalanobis distance', 'mahal_dist' )
+        #self.y_combo.addItem( 'mahalanobis distance', 'mahal_dist' )
 
         #for i in xrange(self.mahalFeatures.shape[1]):
         #    self.x_combo.addItem('mahalanobis_%s' % self.featureNames[i],'mahal %d' % i)
@@ -1430,13 +2495,26 @@ class ResultsWindow(QWidget):
             #groupBox2.hide()
             groupBox3.hide()
 
-        self.statusBar = QStatusBar()
+        #self.statusBar = QStatusBar()
         self.statusBarLabel = QLabel()
-        self.statusBar.addWidget( self.statusBarLabel )
+        self.statusBar().addWidget( self.statusBarLabel )
 
-        view_all_cells_button = QPushButton( 'View all cells' )
+        self.__view_cell_mask_combo = QComboBox()
+        default_index = 0
+        i = 0
+        for name in self.__cell_mask_dict:
+            self.__view_cell_mask_combo.addItem( name )
+            if name == self.__default_cell_mask_name:
+                default_index = i
+            i += 1
+        self.__view_cell_mask_combo.setCurrentIndex( default_index )
+
+        view_all_cells_button = QPushButton( 'View cells' )
         self.connect( view_all_cells_button, SIGNAL('clicked()'), self.on_view_all_cells )
 
+        vbox2 = QVBoxLayout()
+        vbox2.addWidget( self.__view_cell_mask_combo )
+        vbox2.addWidget( view_all_cells_button )
 
         #self.upper_statusbar1 = QStatusBar()
         #self.upper_statusbar1.setSizeGripEnabled( False )
@@ -1450,12 +2528,173 @@ class ResultsWindow(QWidget):
         hbox = QHBoxLayout()
         hbox.addWidget( self.mpl_toolbar, 1 )
         #hbox.addLayout( statusbar_vbox, 1 )
-        hbox.addWidget( view_all_cells_button )
+        hbox.addLayout( vbox2 )
+        #hbox.addWidget( view_all_cells_button )
 
         vbox = QVBoxLayout()
         vbox.addWidget(self.canvas, 1)
         vbox.addLayout( hbox )
         vbox.addLayout(vbox1)
-        vbox.addWidget(self.statusBar)
+        #vbox.addWidget(self.statusBar)
 
-        self.setLayout(vbox)
+        self.main_frame.setLayout( vbox )
+
+        self.setCentralWidget( self.main_frame )
+
+
+    def on_load_pipeline(self):
+
+        file_choices = "Pipeline state file (*.pis)"
+
+        path = unicode(QFileDialog.getOpenFileName(self, 
+                        'Open file', '', 
+                        file_choices))
+        if path:
+            self.pipeline.load_state( str( path ) )
+
+            self.partition = self.pipeline.nonControlPartition
+            self.features = self.pipeline.nonControlFeatures
+
+            if self.partition != None:
+                self.clusteringRadiobutton.setEnabled( True )
+            else:
+                self.clusteringRadiobutton.setEnabled( False )
+
+            self.statusBar().showMessage( 'Loaded pipeline state from %s' % path )
+            self.on_group_policy_changed( self.group_policy )
+
+            return True
+
+        return False
+
+    def on_save_pipeline(self):
+
+        file_choices = "Pipeline state file (*.pis)"
+
+        path = unicode(QFileDialog.getSaveFileName(self, 
+                        'Save file', '', 
+                        file_choices))
+        if path:
+            self.pipeline.save_state( str( path ) )
+            self.statusBar().showMessage( 'Saved pipeline state to %s' % path )
+            return True
+
+        return False
+
+    def on_load_clusters(self):
+
+        file_choices = "Pipeline cluster file (*.pic)"
+
+        path = unicode(QFileDialog.getOpenFileName(self, 
+                        'Open file', '', 
+                        file_choices))
+        if path:
+            self.pipeline.load_clusters( str( path ), self.cluster_param2 )
+
+            self.partition = self.pipeline.nonControlPartition
+            #self.features = self.pipeline.nonControlFeatures
+
+            if self.partition != None:
+                self.clusteringRadiobutton.setEnabled( True )
+            else:
+                self.clusteringRadiobutton.setEnabled( False )
+
+            self.statusBar().showMessage( 'Loaded pipeline clusters from %s' % path )
+            self.on_group_policy_changed( self.group_policy )
+
+            return True
+
+        return False
+
+    def on_save_clusters(self):
+
+        file_choices = "Pipeline cluster file (*.pic)"
+
+        path = unicode(QFileDialog.getSaveFileName(self, 
+                        'Save file', '', 
+                        file_choices))
+        if path:
+            self.pipeline.save_clusters( str( path ) )
+            self.statusBar().showMessage( 'Saved pipeline clusters to %s' % path )
+            return True
+
+        return False
+
+
+    def build_menu(self):
+
+        self.file_menu = self.menuBar().addMenu("&File")
+        
+        open_state_action = self.make_action("&Load pipeline state",
+            shortcut="Ctrl+L", slot=self.on_load_pipeline, 
+            tip="Load a pipeline state from a file")
+        save_state_action = self.make_action("&Save pipeline state",
+            shortcut="Ctrl+S", slot=self.on_save_pipeline, 
+            tip="Save the pipeline state to a file")
+
+        open_clusters_action = self.make_action("&Load pipeline clusters",
+            shortcut="Ctrl+L", slot=self.on_load_clusters, 
+            tip="Load a pipeline clusters from a file")
+        save_clusters_action = self.make_action("&Save pipeline clusters",
+            shortcut="Ctrl+S", slot=self.on_save_clusters, 
+            tip="Save the pipeline clusters to a file")
+
+        self.add_actions( self.file_menu, 
+            ( open_state_action, save_state_action, None, open_clusters_action, save_clusters_action )
+        )
+
+        self.print_menu = self.menuBar().addMenu("&Print")
+        
+        profile_action = self.make_action("Print &cluster profiles",
+            shortcut="Ctrl+C", slot=self.on_print_cluster_profiles, 
+            tip="Print cluster profiles")
+        norm0_profile_action = self.make_action("Print &normalized 0 cluster profiles",
+            shortcut="Ctrl+N", slot=self.on_print_norm0_cluster_profiles, 
+            tip="Print normalized 0 cluster profiles")
+        norm1_profile_action = self.make_action("Print &normalized 1 cluster profiles",
+            shortcut="Ctrl+N", slot=self.on_print_norm1_cluster_profiles, 
+            tip="Print normalized 1 cluster profiles")
+        norm2_profile_action = self.make_action("Print &normalized 2 cluster profiles",
+            shortcut="Ctrl+N", slot=self.on_print_norm2_cluster_profiles, 
+            tip="Print normalized 2 cluster profiles")
+        norm3_profile_action = self.make_action("Print &normalized 3 cluster profiles",
+            shortcut="Ctrl+N", slot=self.on_print_norm3_cluster_profiles, 
+            tip="Print normalized 3 cluster profiles")
+        norm4_profile_action = self.make_action("Print &normalized 4 cluster profiles",
+            shortcut="Ctrl+N", slot=self.on_print_norm4_cluster_profiles, 
+            tip="Print normalized 4 cluster profiles")
+        all_profile_action = self.make_action("Print &all cluster profiles",
+            shortcut="Ctrl+A", slot=self.on_print_all_cluster_profiles, 
+            tip="Print all cluster profiles")
+        gallery_action = self.make_action("Print cell &galleries",
+            shortcut="Ctrl+G", slot=self.on_print_cells, 
+            tip="Print cell galleries")
+
+        self.add_actions( self.print_menu, 
+            ( profile_action, norm0_profile_action, norm1_profile_action, norm2_profile_action, norm3_profile_action, norm4_profile_action, all_profile_action, gallery_action )
+        )
+
+
+    def add_actions(self, target, actions):
+        for action in actions:
+            if action is None:
+                target.addSeparator()
+            else:
+                target.addAction(action)
+
+    def make_action(  self, text, slot=None, shortcut=None, 
+                        icon=None, tip=None, checkable=False, 
+                        signal="triggered()"):
+        action = QAction(text, self)
+        if icon is not None:
+            action.setIcon(QIcon(":/%s.png" % icon))
+        if shortcut is not None:
+            action.setShortcut(shortcut)
+        if tip is not None:
+            action.setToolTip(tip)
+            action.setStatusTip(tip)
+        if slot is not None:
+            self.connect(action, SIGNAL(signal), slot)
+        if checkable:
+            action.setCheckable(True)
+        return action

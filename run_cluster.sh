@@ -1,8 +1,8 @@
 #!/bin/sh
 
-PHENONICE_PREFIX="/g/pepperkok/hepp/PhenoNice"
+YACA_PREFIX="/g/pepperkok/hepp/yaca"
 
-. ${PHENONICE_PREFIX}/cluster_profile
+. ${YACA_PREFIX}/cluster_profile
 
-python ${PHENONICE_PREFIX}/main.py --no-opengl $1 $2 $3 $4 $5
+python ${YACA_PREFIX}/main.py --no-opengl $1 $2 $3 $4 $5
 

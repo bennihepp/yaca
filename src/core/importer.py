@@ -104,7 +104,7 @@ def load_hdf5():
     try:
         hdf5_input_file
     except:
-        raise Exception( 'You need to specify the PhenoNice HDF5 input file!' )
+        raise Exception( 'You need to specify the YACA HDF5 input file!' )
 
     pdc = import_hdf5_results( hdf5_input_file )
 
@@ -120,7 +120,7 @@ def save_hdf5():
     try:
         hdf5_output_file
     except:
-        raise Exception( 'You need to specify the PhenoNice HDF5 output file!' )
+        raise Exception( 'You need to specify the YACA HDF5 output file!' )
 
     try:
         pdc
@@ -147,15 +147,15 @@ utils.register_parameter( __name__, 'csv_delimiter', utils.PARAM_STR, 'Delimiter
 
 utils.register_parameter( __name__, 'csv_extension', utils.PARAM_STR, 'Extension for the CSV files', '.csv' )
 
-utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'PhenoNice HDF5 input file', optional=True )
+utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'YACA HDF5 input file', optional=True )
 
-utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'PhenoNice HDF5 output file', optional=True )
+utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'YACA HDF5 output file', optional=True )
 
 utils.register_action( __name__, 'import', 'Import data', import_data )
 
-utils.register_action( __name__, 'load_hdf5', 'Load data from a PhenoNice HDF5 file', load_hdf5 )
+utils.register_action( __name__, 'load_hdf5', 'Load data from a YACA HDF5 file', load_hdf5 )
 
-utils.register_action( __name__, 'save_hdf5', 'Save data as PhenoNice HDF5 file', save_hdf5 )
+utils.register_action( __name__, 'save_hdf5', 'Save data as YACA HDF5 file', save_hdf5 )
 
 utils.set_module_state_callback( __name__, set_state )
 

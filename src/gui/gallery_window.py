@@ -320,20 +320,20 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
         if focused:
 
-            penWidthF = 2.0
-            pen = QPen( QColor( 0, 255, 255 ) )
+            penWidthF = 4.0
+            pen = QPen( QColor( 255, 0, 0 ) )
             pen.setWidthF( penWidthF )
             painter.setPen( pen )
 
-            left -= self.PIXMAP_SPACING / 2 + penWidthF / 2
-            top -= self.PIXMAP_SPACING / 2 + penWidthF / 2
+            left -= self.PIXMAP_SPACING / 2 # + penWidthF / 2
+            top -= self.PIXMAP_SPACING / 2 # + penWidthF / 2
             width = self.pixmap_width + self.PIXMAP_SPACING
             height = self.pixmap_height + self.PIXMAP_SPACING
             xradius = width / 20
             yradius = height / 20
 
             #painter.drawRect( QRect( left, top, left + width, top + height ) )
-            painter.drawRoundedRect( QRectF( left, top, left + width, top + height ), xradius, yradius )
+            painter.drawRoundedRect( QRectF( left, top, width, height ), xradius, yradius )
 
     def draw_texts(self, painter, row, column, texts):
 
@@ -370,7 +370,19 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
         p = QPainter()
         p.begin( self)
 
-        p.setRenderHint( QPainter.Antialiasing )
+        self.draw_pixmaps(
+            p,
+            self.width(),
+            self.height(),
+            self.rows,
+            self.columns,
+            self.pixmaps,
+            self.pixmap_texts,
+            self.focus_index,
+            QApplication.palette().color( QPalette.Background )
+        )
+
+        """p.setRenderHint( QPainter.Antialiasing )
 
         color = QApplication.palette().color( QPalette.Background )
         brush = QBrush( color )
@@ -392,17 +404,39 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
                     if self.pixmap_texts and len( self.pixmap_texts ) > index:
                         texts = self.pixmap_texts[ index ]
                         if texts != None:
-                            self.draw_texts( p, r, c, texts )
+                            self.draw_texts( p, r, c, texts )"""
 
         p.end()
 
-        """for r in xrange( self.rows ):
+    def draw_pixmaps(self, painter, width, height, num_of_rows, num_of_columns, pixmaps, pixmap_texts, focus_index=-1, background_color=None):
 
-            for c in xrange( self.columns ):
+        p = painter
 
-                texture = self.textures[ r * self.columns + c ]
-                if texture != None:
-                    self.draw_texture( r, c, texture )"""
+        p.setRenderHint( QPainter.Antialiasing )
+
+        if background_color == None:
+            background_color = QApplication.palette().color( QPalette.Background )
+
+        brush = QBrush( background_color )
+        rect = QRect( 0, 0, width, height )
+        p.fillRect( rect, brush )
+
+        for r in xrange( num_of_rows ):
+
+            for c in xrange( num_of_columns ):
+
+                index = r * num_of_columns + c
+
+                if len( pixmaps ) > index:
+                
+                    pixmap = pixmaps[ index ]
+                    if pixmap != None:
+                        self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
+            
+                    if pixmap_texts and len( pixmap_texts ) > index:
+                        texts = pixmap_texts[ index ]
+                        if texts != None:
+                            self.draw_texts( p, r, c, texts )
 
 
 
@@ -460,6 +494,69 @@ class GalleryWindow(QWidget):
         #self.create_menu()
         self.build_widget()
 
+    def on_print(self, printer=None, painter=None, caption=None):
+
+        printer_created = False
+
+        if printer == None:
+
+            printer = QPrinter( QPrinter.HighResolution | QPrinter.Color | QPrinter.Portrait | QPrinter.A4 )
+            dialog = QPrintDialog( printer, self )
+            dialog.setWindowTitle( 'Print cell galleries' )
+            if dialog.exec_() != QDialog.Accepted:
+                return
+    
+            painter = QPainter()
+            painter.begin( printer )
+
+            printer_created = True
+
+
+        if caption == None:
+            caption = self.caption_label.text()
+
+        font = QFont( QApplication.font().family(), 15, QFont.Bold )
+        painter.setPen( Qt.black )
+        painter.setFont( font )
+
+        bounding_rect = painter.boundingRect( 0, 0, printer.width(), printer.height(), Qt.AlignHCenter | Qt.AlignTop, caption )
+        painter.drawText( 0, 0, printer.width(), printer.height(), Qt.AlignHCenter | Qt.AlignTop, caption )
+
+        PIXMAP_SPACING = self.pixmaparea.PIXMAP_SPACING
+
+        vertical_offset = bounding_rect.bottom() + PIXMAP_SPACING
+
+        #print 'vertical_offset:', vertical_offset, 'top:', bounding_rect.top()
+
+        num_of_rows = int( ( printer.height() + PIXMAP_SPACING ) / float( self.pixmap_height + PIXMAP_SPACING ) )
+        num_of_columns = int( ( printer.width() + PIXMAP_SPACING ) / float( self.pixmap_width + PIXMAP_SPACING ) )
+
+        pixmaps, pixmap_texts = self.__load_random_pixmaps( num_of_rows * num_of_columns )
+
+        painter.save()
+
+        point = QPoint( 0, vertical_offset )
+        painter.translate( point )
+
+        self.pixmaparea.draw_pixmaps(
+            painter,
+            printer.width(),
+            printer.height() - vertical_offset,
+            num_of_rows,
+            num_of_columns,
+            pixmaps,
+            pixmap_texts,
+            -1,
+            Qt.white
+        )
+
+        painter.restore()
+
+        if printer_created:
+
+            painter.end()
+
+
     def cmp_channels( self, c1, c2 ):
         if c1 == c2:
             return 0
@@ -492,8 +589,11 @@ class GalleryWindow(QWidget):
                 self.focus_i = i
                 break
 
-        self.start_i = max( 0, self.focus_i - self.rows * self.columns / 2 )
-        self.stop_i = min( self.start_i + self.rows * self.columns, len( selectionIds ) )
+        #self.start_i = max( 0, self.focus_i - self.rows * self.columns / 2 )
+        #self.stop_i = min( self.start_i + self.rows * self.columns, len( selectionIds ) )
+
+        self.stop_i = min( self.focus_i + self.rows * self.columns + 1, len( selectionIds ) )
+        self.start_i = max( 0, self.stop_i - self.rows * self.columns )
 
         self.img_comp = None
 
@@ -558,6 +658,78 @@ class GalleryWindow(QWidget):
             self.singleImageViewer.showMaximized()
 
 
+    def __load_random_pixmaps(self, num_of_pixmaps):
+
+        if self.selectionIds == None:
+            return
+
+        if not self.random:
+            mapping = list( self.idMapping )
+            random.shuffle( mapping )
+        else:
+            mapping = self.idMapping
+
+        pixmaps = []
+        pixmap_texts = []
+
+        for i in xrange( min( num_of_pixmaps, len( mapping ) ) ):
+
+            try:
+                pixmapId = mapping[ i ]
+
+                cacheId = int( self.selectionIds[ pixmapId ] )
+                pix = self.pixmapFactory.createPixmap(
+                                self.selectionIds[ pixmapId ],
+                                -1,
+                                -1,
+                                self.pixmap_width,
+                                self.pixmap_height,
+                                self.channelAdjustment,
+                                self.color,
+                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) )
+                )
+
+                if pix:
+                    pixmaps.append(pix)
+
+                else:
+                    raise Exception( 'Error when creating pixmap' )
+
+                if len( self.selectedFeatures ) > 0:
+
+                    texts = []
+
+                    for feature in self.selectedFeatures:
+
+                        j = self.featureDescription.values().index( feature )
+
+                        featureName = self.featureDescription.keys()[ j ]
+                        if self.singleImage:
+                            text = '%s=%s' % ( featureName, str( self.featureFactory.createFeatureText( self.selectionIds[ pixmapId ], feature ) ) )
+                        else:
+                            text = str( self.featureFactory.createFeatureText( self.selectionIds[ pixmapId ], feature ) )
+
+                        texts.append( text )
+
+                    if len( texts ) > 0:
+                        pixmap_texts.append( texts )
+                    else:
+                        pixmap_texts.append( None )
+
+            except IOError:
+                pixmaps.append(None)
+                raise
+
+            except:
+                pixmaps.append(None)
+                raise
+            finally:
+                if os.path.isfile( self.tmp_image_filename ):
+                    os.remove( self.tmp_image_filename )
+
+        return pixmaps, pixmap_texts
+
+
     def on_reload_images(self, start_i, stop_i, focus_i=-1):
 
         if self.selectionIds == None:
@@ -603,12 +775,18 @@ class GalleryWindow(QWidget):
                     pixmapId = focus_i
                     focus_index = len( self.pixmaps )
 
+                if not self.random:
+                    if focus_i == i:
+                        focus_index = len( self.pixmaps )
+
                 cacheId = int( self.selectionIds[ pixmapId ] )
                 if cacheId in oldCacheIds:
                     oldCacheIds.remove( cacheId )
                 else:
                     self.imageCache[ cacheId ] = {}
-        
+
+                #print 'creating pixmap %d -> %d' % ( pixmapId, self.selectionIds[ pixmapId ] )
+
                 pix = self.pixmapFactory.createPixmap(
                                 self.selectionIds[ pixmapId ],
                                 -1,
@@ -1038,6 +1216,10 @@ class GalleryWindow(QWidget):
         self.randomize_button.setEnabled( self.random )
         self.connect(self.randomize_button, SIGNAL('clicked()'), self.on_randomize_mapping)
         hbox1.addWidget( self.randomize_button )
+
+        self.print_button = QPushButton( 'Print' )
+        self.connect(self.print_button, SIGNAL('clicked()'), self.on_print)
+        hbox1.addWidget( self.print_button )
 
         self.channelAdjusters = []
 

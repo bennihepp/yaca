@@ -36,11 +36,51 @@ utils.register_parameter( __name__, 'filter_obj_feature_id_names', utils.PARAM_O
 
 
 
-def cutoff_control_cells( pdc, imageMask, cellMask ):
+def reject_cells_with_bad_features( pdc, imageMask, cellMask ):
+    """Reject cells which have NaN or Inf values for features that we want to use
+
+    Input parameters:
+      - pdc: YACA data container
+      - imageMask: Mask of images to take into account
+      - cellMask: Mask of cells to take into account
+    Output values (tuple):
+      - Mask of cells with no bad feature values
+      - A list of feature IDs that have been taken into account
+      - A numpy array specifying for each feature the number of
+        cells which had a bad value
+    """
+
+    # trivial check
+    # if filter_obj_feature_id_names is empty, there are no bad feature values
+    if len( filter_obj_feature_id_names ) == 0:
+        return cellMask, [], numpy.zeros( ( 0, ) )
+
+    # determine the feature IDs corresponding to the feature names in filter_obj_feature_id_names
+    featureIds = []
+    for featureName in filter_obj_feature_id_names:
+        featureIds.append( pdc.objFeatureIds[ featureName ] )
+
+    nan_mask = numpy.isnan( pdc.objFeatures[ :, featureIds ] )
+    inverse_cell_mask = numpy.invert( cellMask )
+    nan_mask[ inverse_cell_mask, : ] = False
+    bad_feature_cell_count = numpy.sum( nan_mask, axis=0 )
+
+    collapsed_nan_mask = numpy.any( nan_mask, axis=1 )
+    inverse_mask = numpy.invert( collapsed_nan_mask )
+
+    cellMask = numpy.logical_and( inverse_mask, cellMask )
+
+    return cellMask, featureIds, bad_feature_cell_count
+
+
+FILTER_MODE_MEDIAN_xMAD = 0
+FILTER_MODE_xMEDIAN     = 1
+
+def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIAN_xMAD ):
     """Make a heuristic guess about which cells are control-like cells and which cells are not
 
     Input parameters:
-      - pdc: PhenoNice data container
+      - pdc: YACA data container
       - imageMask: Mask of images to take into account
       - cellMask: Mask of cells to take into account
     Output values (tuple):
@@ -60,9 +100,6 @@ def cutoff_control_cells( pdc, imageMask, cellMask ):
     featureIds = []
     for featureName in filter_obj_feature_id_names:
         featureIds.append( pdc.objFeatureIds[ featureName ] )
-
-    # TODO: this is just for testing purpose
-    #return cellMask, cellMask, featureIds
 
     # extract the image- and object-features
     imgFeatures = pdc.imgFeatures[ imageMask ]
@@ -91,7 +128,11 @@ def cutoff_control_cells( pdc, imageMask, cellMask ):
     # the mahalanobis transformation has difficulties with highly correlated features
     # or features with a low standard-deviation, so we filter those from our list of features
     # (see select_features() for details)
-    featureIds, badStddevFeatures, badCorrFeatures = select_features( controlFeatures, featureIds )
+    featureIds, badNaNFeatures, badStddevFeatures, badCorrFeatures = select_features( controlFeatures, featureIds )
+
+    # print out the features with NaN values
+    print 'features with NaN values:'
+    print badNaNFeatures
 
     # print out a list of features with bad standard-deviation
     print 'features with bad standard-deviation:'
@@ -123,25 +164,115 @@ def cutoff_control_cells( pdc, imageMask, cellMask ):
     #
     # this threshold is determined by the median of the mahalanobis distance of the control cells
     # multiplied by the parameter control_cutoff_threshold
-    median_mahal_dist = numpy.median( mahal_dist[ control_treatment_mask ] )
-    cutoff_mahal_dist = median_mahal_dist * control_cutoff_threshold
+    ctrl_median_mahal_dist = numpy.median( mahal_dist[ control_treatment_mask ] )
+    ctrl_mad_mahal_dist = numpy.median( numpy.abs( mahal_dist[ control_treatment_mask ] - ctrl_median_mahal_dist ) )
+    # compute cutoff_threshold as median + <control_cutoff_threshold> * mad
+    if filterMode == FILTER_MODE_MEDIAN_xMAD:
+        cutoff_mahal_dist = ctrl_median_mahal_dist + control_cutoff_threshold * ctrl_mad_mahal_dist
+    elif filterMode == FILTER_MODE_xMEDIAN:
+        cutoff_mahal_dist = control_cutoff_threshold * ctrl_median_mahal_dist
     # the same could also be done with the mean instead of the median
     #mean_mahal_dist = numpy.mean( mahal_dist[ control_treatment_mask ] )
     #cutoff_mahal_dist = mean_mahal_dist * control_cutoff_threshold
     #
     # print out the median (or mean) mahalanobis distance of the control cells
-    print 'median=%f' % median_mahal_dist
+    print 'median_mahal_dist=%f' % ctrl_median_mahal_dist
+    print 'mad_mahal_dist=%f' % ctrl_mad_mahal_dist
     #print 'mean=%f' % mean_mahal_dist
     # print out the threshold value for the cutoff
     print 'cutoff_mahal_dist=%f' % cutoff_mahal_dist
-    #
+
     # create a mask according to the cutoff-threshold
     cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
-
     # extract all the control-like cells (combined with the cellMask of valid cells)
     controlCellMask = numpy.logical_and( cellMask , numpy.logical_not( cutoffCellMask ) )
     # extract all the non-control-like cells (combined with the cellMask of valid cells
     nonControlCellMask = numpy.logical_and( cellMask , cutoffCellMask )
+
+    # if more than 10% of the control cells are above the cutoff_mahal_dist, increase the cutoff_mahal_dist so that
+    # less than 10% of the control cells are above the cutoff_mahal_dist
+    """print numpy.sum( nonControlCellMask ) / float( numpy.sum( cellMask ) )
+    for ctrl_tr_name in control_treatment_names:
+        ctrl_tr = pdc.treatments[ pdc.treatmentByName[ ctrl_tr_name ] ]
+        ctrl_tr_mask =  numpy.logical_and( cellMask, pdc.objFeatures[ :, pdc.objTreatmentFeatureId ] == ctrl_tr.rowId )
+        mask1 = numpy.logical_and( nonControlCellMask, ctrl_tr_mask )
+        print ctrl_tr_name
+        print ( numpy.sum( mask1 ) / float( numpy.sum( ctrl_tr_mask ) ) )
+        if numpy.sum( mask1 ) / float( numpy.sum( ctrl_tr_mask ) ) > 0.1:
+            values = numpy.sort( mahal_dist[ ctrl_tr_mask ] )
+            index = int( 0.9 * values.shape[0] + 1 )
+            index = min( index, values.shape[0] - 1 )
+            print cutoff_mahal_dist
+            cutoff_mahal_dist = values[ index ]
+            print cutoff_mahal_dist
+
+        # create a mask according to the cutoff-threshold
+        cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
+        # extract all the control-like cells (combined with the cellMask of valid cells)
+        controlCellMask = numpy.logical_and( cellMask , numpy.logical_not( cutoffCellMask ) )
+        # extract all the non-control-like cells (combined with the cellMask of valid cells
+        nonControlCellMask = numpy.logical_and( cellMask , cutoffCellMask )"""
+
+    mask1 = numpy.logical_and( nonControlCellMask, control_treatment_mask )
+    print ( numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) )
+    if numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) > 0.1:
+        values = numpy.sort( mahal_dist[ control_treatment_mask ] )
+        index = int( 0.9 * values.shape[0] + 1 )
+        index = min( index, values.shape[0] - 1 )
+        print cutoff_mahal_dist
+        cutoff_mahal_dist = values[ index ]
+        print cutoff_mahal_dist
+
+    # create a mask according to the cutoff-threshold
+    cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
+    # extract all the control-like cells (combined with the cellMask of valid cells)
+    controlCellMask = numpy.logical_and( cellMask , numpy.logical_not( cutoffCellMask ) )
+    # extract all the non-control-like cells (combined with the cellMask of valid cells
+    nonControlCellMask = numpy.logical_and( cellMask , cutoffCellMask )
+
+    treatment_mask_1 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
+    print 'mahalanobis medians and mads of treatments..'
+    for i in xrange( len( pdc.treatments ) ):
+        tr = pdc.treatments[ i ]
+        tr_mask = numpy.logical_and( cellMask, pdc.objFeatures[ :, pdc.objTreatmentFeatureId ] == tr.rowId )
+        median_mahal_dist = numpy.median( mahal_dist[ tr_mask ] )
+        mad_mahal_dist = numpy.median( numpy.abs( mahal_dist[ tr_mask ] - median_mahal_dist ) )
+        if abs( median_mahal_dist - ctrl_median_mahal_dist ) < ( mad_mahal_dist + ctrl_mad_mahal_dist ):
+            print 'treatment %s might not show a phenotype!!!' % tr.name
+            treatment_mask_1[ i ] = False
+        print '  %s: %f +- %f' % ( tr.name, median_mahal_dist, mad_mahal_dist )
+
+    treatment_mask_2 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
+    print 'mahalanobis medians and mads of cutoff treatments..'
+    for i in xrange( len( pdc.treatments ) ):
+        tr = pdc.treatments[ i ]
+        tr_mask = numpy.logical_and( nonControlCellMask, pdc.objFeatures[ :, pdc.objTreatmentFeatureId ] == tr.rowId )
+        median_mahal_dist = numpy.median( mahal_dist[ tr_mask ] )
+        mad_mahal_dist = numpy.median( numpy.abs( mahal_dist[ tr_mask ] - median_mahal_dist ) )
+        if abs( median_mahal_dist - ctrl_median_mahal_dist ) < ( mad_mahal_dist + ctrl_mad_mahal_dist ):
+            print 'treatment %s might not show a phenotype!!!' % tr.name
+            treatment_mask_2[ i ] = False
+        print '  %s: %f +- %f' % ( tr.name, median_mahal_dist, mad_mahal_dist )
+
+    treatment_mask_3 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
+    print 'penetrance of treatments..'
+    for i in xrange( len( pdc.treatments ) ):
+        tr = pdc.treatments[ i ]
+        tr_mask = numpy.logical_and( cellMask, pdc.objFeatures[ :, pdc.objTreatmentFeatureId ] == tr.rowId )
+        nonCtrl_tr_mask = numpy.logical_and( nonControlCellMask, pdc.objFeatures[ :, pdc.objTreatmentFeatureId ] == tr.rowId )
+        penetrance = numpy.sum( nonCtrl_tr_mask / float( numpy.sum( tr_mask ) ) )
+        if penetrance < 0.1:
+            print 'treatment %s might not show a phenotype!!!' % tr.name
+            treatment_mask_3[ i ] = False
+        print '  %s: %f %%' % ( tr.name, penetrance * 100 )
+
+    treatment_mask = numpy.logical_and( treatment_mask_2, numpy.logical_or( treatment_mask_1, treatment_mask_3 ) )
+
+    print 'phenotypes...'
+    for i in xrange( len( pdc.treatments ) ):
+        tr = pdc.treatments[ i ]
+        if treatment_mask[ i ]:
+            print '  %s shows a phenotype' % tr.name
 
     # print out the number of valid cells
     print 'cells: %d' % numpy.sum( cellMask )
@@ -153,7 +284,11 @@ def cutoff_control_cells( pdc, imageMask, cellMask ):
     # extract the features of the non-control-like cells
     objFeatures = pdc.objFeatures[ nonControlCellMask ]
     # now, based only on the non-control-like cells, filter the features again
-    featureIds, badStddevFeatures, badCorrFeatures = select_features( objFeatures, featureIds )
+    featureIds, badNaNFeatures, badStddevFeatures, badCorrFeatures = select_features( objFeatures, featureIds )
+
+    # print out the features with NaN values
+    print 'features with NaN values:'
+    print badNaNFeatures
 
     # print out the features with a bad standard-deviation
     print 'features with bad standard-deviation:'
@@ -170,7 +305,7 @@ def cutoff_control_cells( pdc, imageMask, cellMask ):
     #   - Mask of suspected control cells
     #   - Mask of suspected non-control cells
     #   - List of feature IDs that have been taken into account
-    return controlCellMask, nonControlCellMask, featureIds
+    return controlCellMask, nonControlCellMask, featureIds, mahal_dist
 
 
 
@@ -187,6 +322,26 @@ def select_features( objFeatures, featureIds ):
       - List of feature IDs with a 'bad' correlation coefficient"""
 
     newFeatureIds = list( featureIds )
+
+
+    # don't use features with a NaN-values
+
+    badNaNFeatures = []
+
+    # look at every feature in featureIds...
+    for i in xrange( len( newFeatureIds ) ):
+        id = newFeatureIds[ i ]
+        # mask NaN values
+        nan_mask = numpy.isnan( objFeatures[ : , id ] )
+        # if any value is NaN, mark the feature as 'bad'
+        if numpy.any( nan_mask ):
+            badNaNFeatures.append( i )
+
+    # delete all features that were marked as 'bad'
+    temp = 0
+    for i in badNaNFeatures:
+        del newFeatureIds[ i - temp ]
+        temp += 1
 
 
     # don't use features with a low standard-deviation (mahalanobis distance would fail)
@@ -236,7 +391,8 @@ def select_features( objFeatures, featureIds ):
 
     # return a tuple containing:
     # - array of selected feature IDs
+    # - list of feature IDs with NaN values
     # - list of feature IDs with a 'bad' standard-deviation
     # - list of feature IDs with a 'bad' correlation coefficient
-    return numpy.array( newFeatureIds ), badStddevFeatures, badCorrFeatures
+    return numpy.array( newFeatureIds ), badNaNFeatures, badStddevFeatures, badCorrFeatures
 

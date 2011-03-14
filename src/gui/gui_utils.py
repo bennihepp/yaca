@@ -181,7 +181,8 @@ class ImagePixmapFactory(PixmapFactory):
 
             # Check for Scan-R images
             if img_type == 'Scan-R': # or ( ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all() ):
-                pixel_arr = pixel_arr + 2**15
+                #pixel_arr = pixel_arr + 2**15
+                pixel_arr = pixel_arr & 0x0fff
                 #pixel_arr = pixel_arr * (2**8-1.0)/(2**12-1.0)
 
             else:
@@ -194,6 +195,7 @@ class ImagePixmapFactory(PixmapFactory):
     def convertImageToByteArray(self, img, img_type=None):
 
         pixel_arr = numpy.array( img.getdata() )
+        #print 'min=%d, max=%d, mean=%d, median=%d' % ( numpy.min( pixel_arr ), numpy.max( pixel_arr ), numpy.mean( pixel_arr ), numpy.median( pixel_arr ) )
 
         if img_type == None:
             img_type = self.getImageType( img )
@@ -203,7 +205,8 @@ class ImagePixmapFactory(PixmapFactory):
 
             # Check for Scan-R images
             if img_type == 'Scan-R': # or ( ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all() ):
-                pixel_arr = pixel_arr + 2**15
+                #pixel_arr = pixel_arr + 2**15
+                pixel_arr = pixel_arr & 0x0fff
                 pixel_arr = pixel_arr * (2**8-1.0)/(2**12-1.0)
 
             else:
@@ -238,7 +241,8 @@ class ImagePixmapFactory(PixmapFactory):
 
             # Check for Scan-R images
             if img_type == 'Scan-R': # or ( ( pixel_arr < 0 ).any() and ( pixel_arr <= 0 ).all() ):
-                pixel = pixel + 2**15
+                #pixel = pixel + 2**15
+                pixel = pixel & 0x0fff
 
             else:
                 mask = pixel < 0
@@ -456,8 +460,10 @@ class ImagePixmapFactory(PixmapFactory):
                     if not file_cached:
 
                         tmp_img = self.loadImage( path )
+                        #print 'loading image %s' % path
 
                         img_type = self.getImageType( tmp_img )
+                        #print 'img_type %s' % img_type
 
                         if rect == None:
 
@@ -473,6 +479,7 @@ class ImagePixmapFactory(PixmapFactory):
                         img_size = img.size
 
                         pixel_arr = self.convertImageToByteArray( img, img_type )
+                        #print 'min=%d, max=%d, mean=%d, median=%d' % ( numpy.min( pixel_arr ), numpy.max( pixel_arr ), numpy.mean( pixel_arr ), numpy.median( pixel_arr ) )
 
                         if use_cache:
                             imageCache[ cacheId ][ 'files' ][ channel ] = {}
@@ -493,7 +500,8 @@ class ImagePixmapFactory(PixmapFactory):
 
                     if adjustment_changed:
 
-                        imageCache[ cacheId ][ 'files' ][ channel ][ 'adjustment' ] = adjustment
+                        if use_cache:
+                            imageCache[ cacheId ][ 'files' ][ channel ][ 'adjustment' ] = adjustment
 
                         if channel in 'RGB':
                             any_rgb_adjustment_changed = True
@@ -613,7 +621,7 @@ class ImagePixmapFactory(PixmapFactory):
             #if merged_img.mode != 'RGB':
             #    merged_img = merged_img.convert( 'RGB' )
             #merged_img.save('/home/benjamin/rgb.tif')
-    
+
             return merged_img
 
 
@@ -648,6 +656,8 @@ class CellPixmapFactory(ImagePixmapFactory):
 
             objId = int( self.features[ index , self.pdc.objObjectFeatureId ] )
             imgId = int( self.features[ index , self.pdc.objImageFeatureId ] )
+
+            #print 'creating image for index=%d, objId=%d, imgId=%d' % ( index, objId, imgId )
 
             if cacheId == None:
                 cacheId = int( index )

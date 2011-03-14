@@ -17,7 +17,9 @@ def import_hdf5_results(file):
     f = None
     try:
         f = h5py.File( file, mode='r' )
-        root = f[ 'PhenoNice_input' ]
+        root = f[ 'YACA_input' ]
+
+        version = root.attrs[ '__version__' ]
 
         print 'reading pickle stream ...'
         pickleStream_dataset = root[ 'pickleStream' ]
@@ -68,7 +70,9 @@ def export_hdf5_results(file, pdc):
     try:
         print 'writing hdf5...'
         f = h5py.File( file, mode='w' )
-        root = f.create_group( 'PhenoNice_input' )
+        root = f.create_group( 'YACA_input' )
+
+        root.attrs[ '__version__' ] = pdc.__version__
 
         print 'pickling object...'
         sio = cStringIO.StringIO()
@@ -131,7 +135,7 @@ class pdc_hybrid_format(object):
         if not os.path.isdir( SHM_TEMP_DIRECTORY ):
             os.mkdir( SHM_TEMP_DIRECTORY )
 
-    SHM_TEMP_FILENAME = SHM_TEMP_DIRECTORY + '/phenonice-hybrid-tmp-file-%d'
+    SHM_TEMP_FILENAME = SHM_TEMP_DIRECTORY + '/yaca-hybrid-tmp-file-%d'
 
     def __init__(self, pdc):
         self.pdc = pdc
@@ -162,7 +166,7 @@ class pdc_hybrid_format(object):
             f = h5py.File( self.tempfile, mode='w' )
     
             print 'exporting results to HDF5 file'
-            root = f.create_group('PhenoNice_input')
+            root = f.create_group('YACA_input')
     
             print 'exporting image features...'
             #imgFeature_dataset = root.create_dataset('imgFeatures', data=self.pdc.imgFeatures)
@@ -215,7 +219,7 @@ class pdc_hybrid_format(object):
             f = h5py.File( self.tempfile, mode='r' )
 
             print 'importing results from HDF5 file'
-            root = f[ 'PhenoNice_input' ]
+            root = f[ 'YACA_input' ]
 
             print 'importing image features...'
             #imgFeature_dataset = root['imgFeatures']

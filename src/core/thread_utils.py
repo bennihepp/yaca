@@ -1,4 +1,5 @@
 import sys
+import traceback
 
 class AbstractThreadBase(object):
     def start_method(self, method, *args):
@@ -12,8 +13,19 @@ class AbstractThreadBase(object):
         self.__thread_method = method
         # and the parameters that should be passed to it
         self.__thread_args = args
+
         # start the thread
         self.start()
+
+    def wait_safe(self):
+        """Wait for the thread to finish and throw and exception if an exception was raised in the thread.
+        """
+
+        self.wait()
+
+        if self.__exception != None:
+            print self.__traceback
+            raise self.__exception
 
     def run(self):
         """This is the method that is called when the thread is started
@@ -21,12 +33,21 @@ class AbstractThreadBase(object):
 
         self.__result = None
 
+        self.__exception = None
+
         if self.__thread_method != None:
-            self.__result = self.__thread_method( *self.__thread_args )
+
+            try:
+                self.__result = self.__thread_method( *self.__thread_args )
+            except Exception,e:
+                self.__exception = e
+                self.__traceback = traceback.format_exc()
 
     def get_result(self):
         """Return the result, that was returned by the last thread method
         """
+
+        self.wait_safe()
 
         return self.__result
 

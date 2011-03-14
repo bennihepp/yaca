@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Project SYSTEM "Project-4.6.dtd">
+<!-- eric4 project file for project yaca -->
+<!-- Saved: 2011-03-01, 14:42:23 -->
+<!-- Copyright (C) 2011 ,  -->
+<Project version="4.6">
+  <Language>en</Language>
+  <ProgLanguage mixed="0">Python</ProgLanguage>
+  <ProjectType>Qt4</ProjectType>
+  <Description></Description>
+  <Version>0.1</Version>
+  <Author></Author>
+  <Email></Email>
+  <Sources>
+    <Source>main.py</Source>
+    <Source>__init__.py</Source>
+    <Source>src/main_gui.py</Source>
+    <Source>src/core/distance.py</Source>
+    <Source>src/core/importer.py</Source>
+    <Source>src/core/pipeline.py</Source>
+    <Source>src/core/quality_control.py</Source>
+    <Source>src/core/cluster.py</Source>
+    <Source>src/core/__init__.py</Source>
+    <Source>src/core/parameter_utils.py</Source>
+    <Source>src/core/ioutil/._test_parser.py</Source>
+    <Source>src/core/ioutil/import_export_hdf5.py</Source>
+    <Source>src/core/ioutil/._import_cp1_csv.py</Source>
+    <Source>src/core/ioutil/data_container.py</Source>
+    <Source>src/core/ioutil/__init__.py</Source>
+    <Source>src/core/ioutil/import_cp2_csv.py</Source>
+    <Source>src/core/analyse.py</Source>
+    <Source>src/core/thread_utils.py</Source>
+    <Source>src/gui/gallery_window.py</Source>
+    <Source>src/gui/main_window.py</Source>
+    <Source>src/gui/__init__.py</Source>
+    <Source>src/gui/parameter_widgets.py</Source>
+    <Source>src/gui/results_window.py</Source>
+    <Source>src/gui/channel_description_widgets.py</Source>
+    <Source>src/gui/cluster_configuration_widgets.py</Source>
+    <Source>src/gui/print_engine.py</Source>
+    <Source>src/gui/gui_utils.py</Source>
+    <Source>src/gui/plot_window.py</Source>
+    <Source>src/gui/cluster_profiles_window.py</Source>
+    <Source>src/main_headless.py</Source>
+    <Source>src/__init__.py</Source>
+    <Source>duplicate_treatments.py</Source>
+    <Source>src/main_batch.py</Source>
+    <Source>src/core/headless_cluster_configuration.py</Source>
+    <Source>src/core/batch/utils.py</Source>
+    <Source>src/core/batch/__init__.py</Source>
+  </Sources>
+  <Forms>
+  </Forms>
+  <Translations>
+  </Translations>
+  <Resources>
+  </Resources>
+  <Interfaces>
+  </Interfaces>
+  <Others>
+  </Others>
+  <MainScript>main.py</MainScript>
+  <Vcs>
+    <VcsType>None</VcsType>
+  </Vcs>
+  <FiletypeAssociations>
+    <FiletypeAssociation pattern="*.ui" type="FORMS" />
+    <FiletypeAssociation pattern="*.idl" type="INTERFACES" />
+    <FiletypeAssociation pattern="*.qm" type="TRANSLATIONS" />
+    <FiletypeAssociation pattern="*.ptl" type="SOURCES" />
+    <FiletypeAssociation pattern="*.pyw" type="SOURCES" />
+    <FiletypeAssociation pattern="*.ui.h" type="FORMS" />
+    <FiletypeAssociation pattern="*.ts" type="TRANSLATIONS" />
+    <FiletypeAssociation pattern="*.py" type="SOURCES" />
+    <FiletypeAssociation pattern="*.qrc" type="RESOURCES" />
+  </FiletypeAssociations>
+</Project>
