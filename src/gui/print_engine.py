@@ -15,6 +15,136 @@ def view_file(filename):
     subprocess.Popen( [ FILE_VIEWER, filename ] )
 
 
+def print_cell_selection_plot(pipeline, outputFilename, mpl_kwargs={}):
+
+    be = plt.get_backend()
+    plt.switch_backend( 'PDF' )
+
+    pp = PdfPages( outputFilename )
+
+    if not mpl_kwargs.has_key( 'facecolor' ): mpl_kwargs[ 'facecolor' ] = 'blue'
+    if not mpl_kwargs.has_key( 'alpha' ): mpl_kwargs[ 'alpha' ] = 0.75
+    if not mpl_kwargs.has_key( 'align' ): mpl_kwargs[ 'align' ] = 'center'
+
+    NUM_OF_ROWS = 1
+    NUM_OF_COLS = 1
+    LEFT_MARGIN = 0.1
+    RIGHT_MARGIN = 0.1
+    HORIZONTAL_SPACING = 0.1
+    BOTTOM_MARGIN = 0.15
+    TOP_MARGIN = 0.1
+    VERTICAL_SPACING = 0.15
+    WIDTH = 1.0 - LEFT_MARGIN - RIGHT_MARGIN
+    HEIGHT = 1.0 - TOP_MARGIN - BOTTOM_MARGIN
+    SUBPLOT_WIDTH = ( WIDTH - ( NUM_OF_COLS - 1 ) * HORIZONTAL_SPACING ) / float( NUM_OF_COLS )
+    SUBPLOT_HEIGHT = ( HEIGHT - ( NUM_OF_ROWS - 1 ) * VERTICAL_SPACING ) / float( NUM_OF_ROWS )
+
+
+    ctrl_median_mahal_dist = pipeline.cell_selection_stats[ 'ctrl_median_mahal_dist' ]
+    ctrl_mad_mahal_dist = pipeline.cell_selection_stats[ 'ctrl_mad_mahal_dist' ]
+    cutoff_mahal_dist_first = pipeline.cell_selection_stats[ 'cutoff_mahal_dist_first' ]
+    cutoff_mahal_dist = pipeline.cell_selection_stats[ 'cutoff_mahal_dist' ]
+
+    median_mahal_dist = numpy.array( pipeline.cell_selection_stats[ 'median_mahal_dist' ] )
+    mad_mahal_dist = numpy.array( pipeline.cell_selection_stats[ 'mad_mahal_dist' ] )
+    median_mahal_cutoff_dist = numpy.array( pipeline.cell_selection_stats[ 'median_mahal_cutoff_dist' ] )
+    mad_mahal_cutoff_dist = numpy.array( pipeline.cell_selection_stats[ 'mad_mahal_cutoff_dist' ] )
+
+    tr_labels = []
+
+    for tr in pipeline.pdc.treatments:
+        tr_labels.append( tr.name )
+
+    import StringIO
+    str = StringIO.StringIO()
+    str.write( 'ctrl median mahal dist\n%.2f\n' % ctrl_median_mahal_dist )
+    str.write( 'ctrl mad mahal dist\n%.2f\n' % ctrl_mad_mahal_dist )
+    str.write( 'cutoff mahal dist first\n%.2f\n' % cutoff_mahal_dist_first )
+    str.write( 'cutoff mahal dist\n%.2f\n' % cutoff_mahal_dist )
+    str.write( '\n' )
+    str.write( 'median mahal dist\n' )
+    for i in xrange( median_mahal_dist.shape[0] ):
+        str.write( '%.2f\t' % median_mahal_dist[ i ] )
+    str.write( '\n\nmad mahal dist\n' )
+    for i in xrange( mad_mahal_dist.shape[0] ):
+        str.write( '%.2f\t' % mad_mahal_dist[ i ] )
+    str.write( '\n\nmedian mahal cutoff dist\n' )
+    for i in xrange( median_mahal_cutoff_dist.shape[0] ):
+        str.write( '%.2f\t' % median_mahal_cutoff_dist[ i ] )
+    str.write( '\n\nmad mahal cutoff dist\n' )
+    for i in xrange( mad_mahal_cutoff_dist.shape[0] ):
+        str.write( '%.2f\t' % mad_mahal_cutoff_dist[ i ] )
+    str.write( '\n' )
+
+    f = open( outputFilename + '.xls', 'w' )
+    f.write( str.getvalue() )
+    f.close()
+
+    str.close()
+
+    error_kw = { 'ecolor' : 'green' }
+
+    n = 0
+    fig = plt.figure()
+    #header_text = fig.suptitle( 'Cell populations' )
+    #footer_text = fig.text( 0.5, 0.02, ' Page %d' % m, horizontalalignment='center', verticalalignment='bottom' )
+
+    row = int( n / NUM_OF_COLS )
+    col = int( n % NUM_OF_COLS )
+    left = LEFT_MARGIN + col * ( SUBPLOT_WIDTH + HORIZONTAL_SPACING )
+    bottom = BOTTOM_MARGIN + row * ( SUBPLOT_HEIGHT + VERTICAL_SPACING )
+    axes = fig.add_axes( [ left, bottom, SUBPLOT_WIDTH, SUBPLOT_HEIGHT ], frameon=True )
+
+    #if bottom_shift != None:
+    #    fig.subplots_adjust( bottom=bottom_shift )
+
+    x = numpy.arange( 0, len( tr_labels ) )
+    axes.set_xticks( x )
+    xlabels = axes.set_xticklabels( tr_labels, rotation='270' )
+
+    axes.set_title( 'Median Mahalanobis distance' )
+    axes.bar( x, median_mahal_dist, yerr=mad_mahal_dist, error_kw=error_kw, **mpl_kwargs )
+
+    axes.set_xlim( -1, len( tr_labels ) )
+    axes.set_ylabel( 'Mahalanobis distance', rotation='270' )
+    axes.grid( True )
+
+    pp.savefig( fig )
+
+
+    n = 0
+    fig = plt.figure()
+    #header_text = fig.suptitle( 'Cell populations' )
+    #footer_text = fig.text( 0.5, 0.02, ' Page %d' % m, horizontalalignment='center', verticalalignment='bottom' )
+
+    row = int( n / NUM_OF_COLS )
+    col = int( n % NUM_OF_COLS )
+    left = LEFT_MARGIN + col * ( SUBPLOT_WIDTH + HORIZONTAL_SPACING )
+    bottom = BOTTOM_MARGIN + row * ( SUBPLOT_HEIGHT + VERTICAL_SPACING )
+    axes = fig.add_axes( [ left, bottom, SUBPLOT_WIDTH, SUBPLOT_HEIGHT ], frameon=True )
+
+    #if bottom_shift != None:
+    #    fig.subplots_adjust( bottom=bottom_shift )
+
+    x = numpy.arange( 0, len( tr_labels ) )
+    axes.set_xticks( x )
+    xlabels = axes.set_xticklabels( tr_labels, rotation='270' )
+
+    axes.set_title( 'Median Mahalanobis distance of selected cells' )
+    axes.bar( x, median_mahal_cutoff_dist, yerr=mad_mahal_cutoff_dist, error_kw=error_kw, **mpl_kwargs )
+
+    axes.set_xlim( -1, len( tr_labels ) )
+    axes.set_ylabel( 'Mahalanobis distance', rotation='270' )
+    axes.grid( True )
+
+    pp.savefig( fig )
+
+
+    pp.close()
+
+    plt.switch_backend( be )
+
+
 def print_clustering_plot(pipeline, outputFilename, mpl_kwargs={}):
 
     be = plt.get_backend()
@@ -95,7 +225,7 @@ def print_cell_populations_and_penetrance(pipeline, outputFilename, mpl_kwargs={
     if not mpl_kwargs.has_key( 'alpha' ): mpl_kwargs[ 'alpha' ] = 0.75
     if not mpl_kwargs.has_key( 'align' ): mpl_kwargs[ 'align' ] = 'center'
 
-    NUM_OF_ROWS = 3
+    NUM_OF_ROWS = 1
     NUM_OF_COLS = 1
     LEFT_MARGIN = 0.1
     RIGHT_MARGIN = 0.1
@@ -126,22 +256,38 @@ def print_cell_populations_and_penetrance(pipeline, outputFilename, mpl_kwargs={
         tr_labels.append( pipeline.pdc.treatments[ tr1.rowId ].name )
     penetrance = nonControl_population / total_population
 
-    n = 2
+    import StringIO
+    str = StringIO.StringIO()
+    str.write( 'total population\n' )
+    for i in xrange( total_population.shape[0] ):
+        str.write( '%.2f\t' % total_population[ i ] )
+    str.write( '\n\nnon-control population\n' )
+    for i in xrange( total_population.shape[0] ):
+        str.write( '%.2f\t' % total_population[ i ] )
+    str.write( '\n\npenetrance\n' )
+    for i in xrange( penetrance.shape[0] ):
+        str.write( '%.2f\t' % penetrance[ i ] )
+    str.write( '\n' )
+
+    f = open( outputFilename + '.xls', 'w' )
+    f.write( str.getvalue() )
+    f.close()
+
+    str.close()
+
+    n = 0
     fig = plt.figure()
-    header_text = fig.suptitle( 'Cell populations' )
+    #header_text = fig.suptitle( 'Cell populations' )
     #footer_text = fig.text( 0.5, 0.02, ' Page %d' % m, horizontalalignment='center', verticalalignment='bottom' )
-    #if bottom_shift != None:
-    #    fig.subplots_adjust( bottom=bottom_shift )
-
-    #axes = plt.subplot( num_of_rows, num_of_cols, n )
-
 
     row = int( n / NUM_OF_COLS )
     col = int( n % NUM_OF_COLS )
     left = LEFT_MARGIN + col * ( SUBPLOT_WIDTH + HORIZONTAL_SPACING )
     bottom = BOTTOM_MARGIN + row * ( SUBPLOT_HEIGHT + VERTICAL_SPACING )
     axes = fig.add_axes( [ left, bottom, SUBPLOT_WIDTH, SUBPLOT_HEIGHT ], frameon=True )
-    n -= 1
+
+    #if bottom_shift != None:
+    #    fig.subplots_adjust( bottom=bottom_shift )
 
     x = numpy.arange( 0, len( tr_labels ) )
     axes.set_xticks( x )
@@ -154,13 +300,17 @@ def print_cell_populations_and_penetrance(pipeline, outputFilename, mpl_kwargs={
     axes.set_ylabel( '# of cells', rotation='270' )
     axes.grid( True )
 
+    pp.savefig( fig )
+
+    fig = plt.figure()
+    #header_text = fig.suptitle( 'Cell populations' )
+    #n -= 1
 
     row = int( n / NUM_OF_COLS )
     col = int( n % NUM_OF_COLS )
     left = LEFT_MARGIN + col * ( SUBPLOT_WIDTH + HORIZONTAL_SPACING )
     bottom = BOTTOM_MARGIN + row * ( SUBPLOT_HEIGHT + VERTICAL_SPACING )
     axes = fig.add_axes( [ left, bottom, SUBPLOT_WIDTH, SUBPLOT_HEIGHT ], frameon=True )
-    n -= 1
 
     x = numpy.arange( 0, len( tr_labels ) )
     axes.set_xticks( x )
@@ -173,13 +323,17 @@ def print_cell_populations_and_penetrance(pipeline, outputFilename, mpl_kwargs={
     axes.set_ylabel( '# of cells', rotation='270' )
     axes.grid( True )
 
+    pp.savefig( fig )
+
+    fig = plt.figure()
+    header_text = fig.suptitle( 'Cell populations' )
+    #n -= 1
 
     row = int( n / NUM_OF_COLS )
     col = int( n % NUM_OF_COLS )
     left = LEFT_MARGIN + col * ( SUBPLOT_WIDTH + HORIZONTAL_SPACING )
     bottom = BOTTOM_MARGIN + row * ( SUBPLOT_HEIGHT + VERTICAL_SPACING )
     axes = fig.add_axes( [ left, bottom, SUBPLOT_WIDTH, SUBPLOT_HEIGHT ], frameon=True )
-    n -= 1
 
     x = numpy.arange( 0, len( tr_labels ) )
     axes.set_xticks( x )
@@ -192,15 +346,15 @@ def print_cell_populations_and_penetrance(pipeline, outputFilename, mpl_kwargs={
     axes.set_ylabel( '# of cells', rotation='270' )
     axes.grid( True )
 
-
     pp.savefig( fig )
+
 
     pp.close()
 
     plt.switch_backend( be )
 
 
-def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, outputFilename, normalize=False, profile_threshold=0.0, barplot_kwargs={}, heatmap_kwargs={}):
+def __print_cluster_profiles_and_heatmap(bottom_shift, treatmentLabels, clusterProfiles, similarityMap, outputFilename, normalize=False, profile_threshold=0.0, barplot_kwargs={}, heatmap_kwargs={}):
 
     be = plt.get_backend()
     plt.switch_backend( 'PDF' )
@@ -229,15 +383,15 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
     n = NUM_OF_ROWS * NUM_OF_COLS
     m = 1
 
-    nonEmptyProfileIndices = range( clusterProfiles.shape[0] )
+    #nonEmptyProfileIndices = range( clusterProfiles.shape[0] )
 
     for i in xrange( clusterProfiles.shape[0] ):
 
-        if numpy.all( clusterProfiles[ i ] == 0 ):
-            nonEmptyProfileIndices.remove( i )
-            continue
+        #if numpy.all( clusterProfiles[ i ] == 0 ):
+        #    nonEmptyProfileIndices.remove( i )
+        #    continue
 
-        sys.stdout.write( '\r  treatment %s ...' % pdc.treatments[ i ].name )
+        sys.stdout.write( '\r  treatment %s ...' % treatmentLabels[ i ] )
         sys.stdout.flush()
 
         if n >= NUM_OF_ROWS * NUM_OF_COLS:
@@ -281,7 +435,7 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
             else:
                 xlabels.append( '' )
 
-        axes.set_title( 'Treatment %s' % pdc.treatments[ i ].name )
+        axes.set_title( 'Treatment %s' % treatmentLabels[ i ] )
 
         axes.bar( x, profile, **mpl_kwargs )
         axes.set_xticks( x )
@@ -303,10 +457,10 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
 
     pp.savefig( fig )
 
-    treatments = []
-    for i in xrange( len( pdc.treatments ) ):
-        if i in nonEmptyProfileIndices:
-            treatments.append( pdc.treatments[ i ] )
+    #treatments = []
+    #for i in xrange( len( pdc.treatments ) ):
+    #    if i in nonEmptyProfileIndices:
+    #        treatments.append( pdc.treatments[ i ] )
 
     sys.stdout.write( '\n' )
     sys.stdout.flush()
@@ -333,9 +487,6 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
     WIDTH = 1.0 - LEFT_MARGIN - RIGHT_MARGIN
     HEIGHT = 1.0 - TOP_MARGIN - BOTTOM_MARGIN
 
-    profileHeatmap = numpy.zeros( ( clusterProfiles.shape[0], clusterProfiles.shape[0] ) )
-    profileHeatmap[ numpy.identity( profileHeatmap.shape[0], dtype=bool ) ] = numpy.nan
-
     """cmap = matplotlib.colors.LinearSegmentedColormap(
         'gray_values',
         { 'red' :   [ ( 0.0, 1.0, 1.0 ),
@@ -348,124 +499,31 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
     )"""
 
     fig = plt.figure()
-    header_text = fig.suptitle( 'Heatmap of cluster profile distances (Summed min-max)' )
+    header_text = fig.suptitle( 'Heatmap of cluster profile similarities' )
     footer_text = fig.text( 0.5, 0.02, ' Page %d' % m, horizontalalignment='center', verticalalignment='bottom' )
 
     axes = fig.add_axes( [ LEFT_MARGIN, BOTTOM_MARGIN, WIDTH, HEIGHT ], frameon=True )
-
-    """for i in xrange( clusterProfiles.shape[0] ):
-
-        profile1 = clusterProfiles[ i ]
-        norm_profile1 = profile1 / float( numpy.sum( profile1 ) )
-
-        if profile_threshold > 0.0:
-            max = numpy.max( profile1 )
-            threshold_mask = profile1 < max * profile_threshold
-            norm_profile1[ threshold_mask ] = 0.0
-            norm_profile1 = norm_profile1 / float( numpy.sum( norm_profile1 ) )
-
-        for j in xrange( 0, i ):
-
-            profile2 = clusterProfiles[ j ]
-            norm_profile2 = profile2 / float( numpy.sum( profile2 ) )
-
-            if profile_threshold > 0.0:
-                max = numpy.max( profile2 )
-                threshold_mask = profile2 < max * profile_threshold
-                norm_profile2[ threshold_mask ] = 0.0
-                norm_profile2 = norm_profile2 / float( numpy.sum( norm_profile2 ) )
-
-            # L2-norm
-            dist = numpy.sqrt( numpy.sum( ( norm_profile1 - norm_profile2 ) ** 2 ) )
-            # chi-square
-            #dist =  ( norm_profile1 - norm_profile2 ) ** 2 / ( norm_profile1 + norm_profile2 )
-            #dist[ numpy.logical_and( norm_profile1 == 0, norm_profile2 == 0 ) ] = 0.0
-            #dist = numpy.sum( dist )
-            #print '%s <-> %s: %f' % ( self.pipeline.pdc.treatments[ i ].name, self.pipeline.pdc.treatments[ j ].name, dist )
-
-            profileHeatmap[ i, j ] = dist
-            profileHeatmap[ j, i ] = dist"""
-
-    for i in xrange( clusterProfiles.shape[0] ):
-
-        profile1 = clusterProfiles[ i ]
-        norm_profile1 = profile1 / float( numpy.sum( profile1 ) )
-
-        if profile_threshold > 0.0:
-            max = numpy.max( profile1 )
-            threshold_mask = profile1 < max * profile_threshold
-            norm_profile1[ threshold_mask ] = 0.0
-            norm_profile1 = norm_profile1 / float( numpy.sum( norm_profile1 ) )
-
-        for j in xrange( i ):
-
-            profile2 = clusterProfiles[ j ]
-            norm_profile2 = profile2 / float( numpy.sum( profile2 ) )
-
-            if profile_threshold > 0.0:
-                max = numpy.max( profile2 )
-                threshold_mask = profile2 < max * profile_threshold
-                norm_profile2[ threshold_mask ] = 0.0
-                norm_profile2 = norm_profile2 / float( numpy.sum( norm_profile2 ) )
-
-            #match = numpy.sum( norm_profile1 * norm_profile2 )
-
-            #self_match1 = numpy.sum( norm_profile1 ** 2 )
-            #self_match2 = numpy.sum( norm_profile1 ** 2 )
-
-            #match = match / ( 0.5 * ( self_match1 + self_match2 ) )
-
-            #match = numpy.sum( numpy.min( [ norm_profile1, norm_profile2 ], axis=0 ) )
-
-            # L2-norm
-            #dist = numpy.sqrt( numpy.sum( ( norm_profile1 - norm_profile2 ) ** 2 ) )
-            # chi-square
-            #dist =  ( norm_profile1 - norm_profile2 ) ** 2 / ( norm_profile1 + norm_profile2 )
-            #dist[ numpy.logical_and( norm_profile1 == 0, norm_profile2 == 0 ) ] = 1.0
-            #dist = 0.5 * numpy.sum( dist )
-            #print '%s <-> %s: %f' % ( self.pipeline.pdc.treatments[ i ].name, self.pipeline.pdc.treatments[ j ].name, dist )
-
-            #min_match = numpy.sum( numpy.min( [ norm_profile1, norm_profile2 ], axis=0 ) )
-            #max_match = numpy.sum( numpy.max( [ norm_profile1, norm_profile2 ], axis=0 ) )
-
-            # summed minmax-metric
-            min_match = numpy.sum( numpy.min( [ norm_profile1, norm_profile2 ], axis=0 )**2 )
-            max_match = numpy.sum( numpy.max( [ norm_profile1, norm_profile2 ], axis=0 )**2 )
-
-            match = min_match / max_match
-
-            # L1-norm
-            #dist2 = numpy.sum( numpy.abs( norm_profile1 - norm_profile2 ) )
-
-            profileHeatmap[ i, j ] = match # Summed min-max metric, lower triangular matrix
-            profileHeatmap[ j, i ] = match # Summed min-max metric, upper triangular matrix
-            #profileHeatmap[ j, i ] = dist2 # L^1-norm, upper triangular matrix
-
-    profileHeatmap = profileHeatmap[ nonEmptyProfileIndices ][ :, nonEmptyProfileIndices ]
 
     #aximg = axes.imshow( profileHeatmap, cmap=cmap, interpolation='nearest' )
 
     #x = numpy.arange( 0.5, profileHeatmap.shape[1] - 1.5 )
     #axes.set_xticks( x, minor=True )
-    x = numpy.arange( profileHeatmap.shape[1] )
+    x = numpy.arange( similarityMap.shape[1] )
     axes.set_xticks( x, minor=False )
-    axes.set_xlim( -0.5, profileHeatmap.shape[1] - 0.5)
+    axes.set_xlim( -0.5, similarityMap.shape[1] - 0.5)
 
     #y = numpy.arange( 0.5, profileHeatmap.shape[0] - 1.5 )
     #axes.set_yticks( y, minor=True )
-    y = numpy.arange( profileHeatmap.shape[0] )
+    y = numpy.arange( similarityMap.shape[0] )
     axes.set_yticks( y, minor=False )
-    axes.set_ylim( -0.5, profileHeatmap.shape[0] - 0.5)
+    axes.set_ylim( -0.5, similarityMap.shape[0] - 0.5)
 
-    labels = []
-    for tr in treatments:
-        labels.append( tr.name )
     #for i in xrange( clusterProfiles.shape[0] ):
     #    if i in nonEmptyProfileIndices:
     #        labels.append( pdc.treatments[ i ].name )
 
-    axes.set_xticklabels( labels, rotation='270' )
-    axes.set_yticklabels( labels[ ::-1 ], rotation='0' )
+    axes.set_xticklabels( treatmentLabels, rotation='270' )
+    axes.set_yticklabels( treatmentLabels[ ::-1 ], rotation='0' )
 
     #heatmap = profileHeatmap.copy()
     #for i in xrange( 0, heatmap.shape[0], 2 ):
@@ -485,9 +543,10 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
         tick.label1On = True
         tick.label2On = False
 
-    #color_factory = lambda v: ( 1-v, 1-v, 1-v )
     #draw_sum_minmax_heatmap( axes, profileHeatmap, ( 0, 0 ), 6, color_factory )
-    draw_sum_minmax_heatmap( axes, 1.0 - profileHeatmap, ( 0, 0 ), 6 )
+    #draw_sum_minmax_heatmap( axes, 1.0 - profileHeatmap, ( 0, 0 ), 6 )
+    color_factory = lambda v: ( 1-v, 1-v, 1-v )
+    draw_treatment_similarity_map( axes, similarityMap, ( 0, 0 ), 6, color_factory )
 
     """max_value = numpy.max( profileHeatmap[ numpy.invert( numpy.isnan( profileHeatmap ) ) ] )
     for i in xrange( profileHeatmap.shape[0] ):
@@ -518,22 +577,19 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
 
     pp.savefig( fig )
 
-    sum_of_min_profileHeatmap = profileHeatmap
+    """#sum_of_min_profileHeatmap = profileHeatmap
 
 
-    profileHeatmap = numpy.zeros( ( clusterProfiles.shape[0], clusterProfiles.shape[0] ) )
-    profileHeatmap[ numpy.identity( profileHeatmap.shape[0], dtype=bool ) ] = numpy.nan
-
-    """cmap = matplotlib.colors.LinearSegmentedColormap(
-        'gray_values',
-        { 'red' :   [ ( 0.0, 0.0, 0.0 ),
-                      ( 1.0, 1.0, 1.0 ) ],
-          'green' : [ ( 0.0, 0.0, 0.0 ),
-                      ( 1.0, 1.0, 1.0 ) ],
-          'blue' :  [ ( 0.0, 0.0, 0.0 ),
-                      ( 1.0, 1.0, 1.0 ) ],
-        }
-    )"""
+    #cmap = matplotlib.colors.LinearSegmentedColormap(
+    #    'gray_values',
+    #    { 'red' :   [ ( 0.0, 0.0, 0.0 ),
+    #                  ( 1.0, 1.0, 1.0 ) ],
+    #      'green' : [ ( 0.0, 0.0, 0.0 ),
+    #                  ( 1.0, 1.0, 1.0 ) ],
+    #      'blue' :  [ ( 0.0, 0.0, 0.0 ),
+    #                  ( 1.0, 1.0, 1.0 ) ],
+    #    }
+    #)
 
     fig = plt.figure()
     header_text = fig.suptitle( 'Heatmap of cluster profile distances (L^2 [lower] and Chi^2 [upper])' )
@@ -541,55 +597,19 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
 
     axes = fig.add_axes( [ LEFT_MARGIN, BOTTOM_MARGIN, WIDTH, HEIGHT ], frameon=True )
 
-    for i in xrange( clusterProfiles.shape[0] ):
-
-        profile1 = clusterProfiles[ i ]
-        norm_profile1 = profile1 / float( numpy.sum( profile1 ) )
-
-        if profile_threshold > 0.0:
-            max = numpy.max( profile1 )
-            threshold_mask = profile1 < max * profile_threshold
-            norm_profile1[ threshold_mask ] = 0.0
-            norm_profile1 = norm_profile1 / float( numpy.sum( norm_profile1 ) )
-
-        for j in xrange( i ):
-
-            profile2 = clusterProfiles[ j ]
-            norm_profile2 = profile2 / float( numpy.sum( profile2 ) )
-
-            if profile_threshold > 0.0:
-                max = numpy.max( profile2 )
-                threshold_mask = profile2 < max * profile_threshold
-                norm_profile2[ threshold_mask ] = 0.0
-                norm_profile2 = norm_profile2 / float( numpy.sum( norm_profile2 ) )
-
-            # L2-norm
-            dist1 = numpy.sqrt( numpy.sum( ( norm_profile1 - norm_profile2 ) ** 2 ) )
-            # chi-square
-            dist2 =  ( norm_profile1 - norm_profile2 ) ** 2 / ( norm_profile1 + norm_profile2 )
-            dist2[ numpy.logical_and( norm_profile1 == 0, norm_profile2 == 0 ) ] = 0.0
-            dist2 = numpy.sum( dist2 )
-            #print '%s <-> %s: %f' % ( self.pipeline.pdc.treatments[ i ].name, self.pipeline.pdc.treatments[ j ].name, dist )
-
-            profileHeatmap[ i, j ] = dist1 # L^2-norm, lower triangular matrix
-            profileHeatmap[ j, i ] = dist2 # Chi^2-norm, upper triangular matrix
-
-
-    profileHeatmap = profileHeatmap[ nonEmptyProfileIndices ][ :, nonEmptyProfileIndices ]
-
     #aximg = axes.imshow( profileHeatmap, cmap=cmap, interpolation='nearest' )
 
     #x = numpy.arange( 0.5, profileHeatmap.shape[1] - 1.5 )
     #axes.set_xticks( x, minor=True )
-    x = numpy.arange( profileHeatmap.shape[1] )
+    x = numpy.arange( distanceMap.shape[1] )
     axes.set_xticks( x, minor=False )
-    axes.set_xlim( -0.5, profileHeatmap.shape[1] - 0.5)
+    axes.set_xlim( -0.5, distanceMap.shape[1] - 0.5)
 
     #y = numpy.arange( 0.5, profileHeatmap.shape[0] - 1.5 )
     #axes.set_yticks( y, minor=True )
-    y = numpy.arange( profileHeatmap.shape[0] )
+    y = numpy.arange( distanceMap.shape[0] )
     axes.set_yticks( y, minor=False )
-    axes.set_ylim( -0.5, profileHeatmap.shape[0] - 0.5)
+    axes.set_ylim( -0.5, distanceMap.shape[0] - 0.5)
 
     labels = []
     for tr in treatments:
@@ -619,27 +639,9 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
         tick.label1On = True
         tick.label2On = False
 
-    draw_diagonal_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
-    draw_upper_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
-    draw_lower_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
-
-    """max_value = numpy.max( profileHeatmap[ numpy.invert( numpy.isnan( profileHeatmap ) ) ] )
-    for i in xrange( profileHeatmap.shape[0] ):
-        for j in xrange( i, profileHeatmap.shape[0] ):
-            if not numpy.isnan( profileHeatmap[ i, j ] ):
-                x = ( j + 0.5 ) / float( profileHeatmap.shape[0] )
-                y = ( i + 0.5 ) / float( profileHeatmap.shape[1] )
-                string = '%.2f' % ( profileHeatmap[ i, j ] )
-                if ( profileHeatmap[ i, j ] / max_value ) < 0.5:
-                    textColor = 'white'
-                else:
-                    textColor = 'black'
-                axes.text( x, y, string, fontsize=8,
-                           horizontalalignment = 'center',
-                           verticalalignment = 'center',
-                           transform = axes.transAxes,
-                           color = textColor
-                )"""
+    #draw_diagonal_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
+    #draw_upper_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
+    #draw_lower_heatmap( axes, profileHeatmap, ( 0, 0 ), 6 )
 
     mpl_kwargs = heatmap_kwargs
     if not mpl_kwargs.has_key( 'color' ): mpl_kwargs[ 'color' ] = 'white'
@@ -652,23 +654,24 @@ def __print_cluster_profiles_and_heatmap(bottom_shift, pdc, clusterProfiles, out
 
     pp.savefig( fig )
 
-    l2_norm_profileHeatmap = profileHeatmap
+    l2_norm_profileHeatmap = profileHeatmap"""
 
 
     pp.close()
 
     plt.switch_backend( be )
 
-    return bottom_shift, sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments
+    return bottom_shift #, sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments
 
-def print_cluster_profiles_and_heatmap(pdc, clusterProfiles, outputFilename, normalize=False, profile_threshold=0.0, barplot_kwargs={}, heatmap_kwargs={}):
+def print_cluster_profiles_and_heatmap(treatmentLabels, clusterProfiles, similarityMap, outputFilename, normalize=False, profile_threshold=0.0, barplot_kwargs={}, heatmap_kwargs={}):
 
     bottom_shift = None
-    bottom_shift, sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
-        __print_cluster_profiles_and_heatmap( bottom_shift, pdc, clusterProfiles, outputFilename, normalize, profile_threshold, barplot_kwargs, heatmap_kwargs )
-    __print_cluster_profiles_and_heatmap( bottom_shift, pdc, clusterProfiles, outputFilename, normalize, profile_threshold, barplot_kwargs, heatmap_kwargs )
+    #bottom_shift, sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments = \
+    bottom_shift = \
+        __print_cluster_profiles_and_heatmap( bottom_shift, treatmentLabels, clusterProfiles, similarityMap, outputFilename, normalize, profile_threshold, barplot_kwargs, heatmap_kwargs )
+    __print_cluster_profiles_and_heatmap( bottom_shift, treatmentLabels, clusterProfiles, similarityMap, outputFilename, normalize, profile_threshold, barplot_kwargs, heatmap_kwargs )
 
-    return sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments
+    #return sum_of_min_profileHeatmap, l2_norm_profileHeatmap, treatments
 
 
 def draw_diagonal_heatmap(axes, map, xy, fontsize=12, color_factory=None):
@@ -676,6 +679,10 @@ def draw_diagonal_heatmap(axes, map, xy, fontsize=12, color_factory=None):
     trans1 = mtransforms.Affine2D.identity()
     trans1 = trans1.scale( 1. / ( map.shape[0] ), 1. / ( map.shape[1] ) ).scale( 1.0, -1.0 ).translate( 0.0, 1.0 )
     trans = mtransforms.composite_transform_factory( trans1, axes.transAxes )
+
+    masked_map = map[ numpy.isfinite( map ) ]
+    if masked_map.shape[0] == 0:
+        return
 
     if color_factory == None:
         color_factory = lambda v: ( v, v, v )
@@ -724,6 +731,10 @@ def draw_upper_heatmap(axes, map, xy, fontsize=12, color_factory=None):
     trans1 = trans1.scale( 1. / ( map.shape[0] ), 1. / ( map.shape[1] ) ).scale( 1.0, -1.0 ).translate( 0.0, 1.0 )
     trans = mtransforms.composite_transform_factory( trans1, axes.transAxes )
 
+    masked_map = map[ numpy.isfinite( map ) ]
+    if masked_map.shape[0] == 0:
+        return
+
     if color_factory == None:
         color_factory = lambda v: ( v, v, v )
     max_value = numpy.max( map[ numpy.isfinite( map ) ] )
@@ -771,6 +782,10 @@ def draw_lower_heatmap(axes, map, xy, fontsize=12, color_factory=None):
     trans1 = trans1.scale( 1. / ( map.shape[0] ), 1. / ( map.shape[1] ) ).scale( 1.0, -1.0 ).translate( 0.0, 1.0 )
     trans = mtransforms.composite_transform_factory( trans1, axes.transAxes )
 
+    masked_map = map[ numpy.isfinite( map ) ]
+    if masked_map.shape[0] == 0:
+        return
+
     if color_factory == None:
         color_factory = lambda v: ( v, v, v )
     max_value = numpy.max( map[ numpy.isfinite( map ) ] )
@@ -813,7 +828,7 @@ def draw_lower_heatmap(axes, map, xy, fontsize=12, color_factory=None):
                 rec = matplotlib.patches.Rectangle( rect_xy, rect_d, rect_d, color=frameColor, fill=False, zorder=frameZorder, transform = trans )
                 axes.add_artist( rec )
 
-def draw_sum_minmax_heatmap(axes, map, xy, fontsize=12, color_factory=None):
+def draw_treatment_similarity_map(axes, map, xy, fontsize=12, color_factory=None):
     #axes.set_frame_on( False )
 
     trans1 = mtransforms.Affine2D.identity()
@@ -836,9 +851,14 @@ def draw_sum_minmax_heatmap(axes, map, xy, fontsize=12, color_factory=None):
     print trans.transform( ( 0, ( map.shape[0]) ) )
     print trans.transform( ( map.shape[0], 0 ) )
 
-    print 'draw_sum_minmax_heatmaps'
+    print 'draw_treatment_similarity_map'
+
     if color_factory == None:
         color_factory = lambda v: ( v, v, v )
+    masked_map = map[ numpy.isfinite( map ) ]
+    if masked_map.shape[0] == 0:
+        return
+
     max_value = numpy.max( map[ numpy.isfinite( map ) ] )
     if max_value == 0.0 or not numpy.isfinite( max_value ):
         max_value = 1.0
@@ -892,7 +912,7 @@ def draw_sum_minmax_heatmap(axes, map, xy, fontsize=12, color_factory=None):
                 rec = matplotlib.patches.Rectangle( rect_xy, rect_d, rect_d, color=frameColor, fill=False, zorder=frameZorder, transform = trans )
                 axes.add_artist( rec )
 
-def draw_treatment_similarity_map(axes, map, xy, fontsize=12, color_factory=None):
+def draw_modified_treatment_similarity_map(axes, map, xy, fontsize=12, color_factory=None):
     #axes.set_frame_on( False )
 
     trans1 = mtransforms.Affine2D.identity()
@@ -901,7 +921,11 @@ def draw_treatment_similarity_map(axes, map, xy, fontsize=12, color_factory=None
 
     if color_factory == None:
         color_factory = lambda v: ( v, v, v )
-    max_value = numpy.max( map[ numpy.isfinite( map ) ] )
+    masked_map = map[ numpy.isfinite( map ) ]
+    if masked_map.shape[0] == 0:
+        return
+
+    max_value = numpy.max( masked_map )
     if max_value == 0.0 or not numpy.isfinite( max_value ):
         max_value = 1.0
     for i in xrange( map.shape[0] ):
@@ -1015,11 +1039,11 @@ def print_treatment_similarity_map(treatmentSimilarityMap, labels, outputFilenam
         tick.label1On = True
         tick.label2On = False
 
-    #print treatmentSimilarityMap
+    print treatmentSimilarityMap
     #draw_lower_heatmap( axes, treatmentSimilarityMap, ( -0.5, -0.5 ), 12 )
-    #color_factory = lambda v: ( 1-v, 1-v, 1-v )
     #draw_treatment_similarity_map( axes, treatmentSimilarityMap, ( 0, 0 ), 12, color_factory )
-    draw_treatment_similarity_map( axes, treatmentSimilarityMap, ( 0, 0 ), 12 )
+    color_factory = lambda v: ( 1-v, 1-v, 1-v )
+    draw_modified_treatment_similarity_map( axes, treatmentSimilarityMap, ( 0, 0 ), 12, color_factory )
 
     """for i in xrange( treatmentSimilarityMap.shape[0] ):
         for j in xrange( i, treatmentSimilarityMap.shape[0] ):

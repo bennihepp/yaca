@@ -32,7 +32,9 @@ def import_hdf5_results(file):
         sio = cStringIO.StringIO( pickleStr )
         up = cPickle.Unpickler( sio )
         print 'unpickling object...'
-        pdc = up.load()
+        pdc_container = up.load()
+        pdc = yaca_data_container.import_container( pdc_container )
+        #pdc = up.load()
         sio.close()
 
         print 'reading image features table...'
@@ -78,13 +80,16 @@ def export_hdf5_results(file, pdc):
         sio = cStringIO.StringIO()
         p = cPickle.Pickler( sio )
 
-        imgFeatures = pdc.imgFeatures
-        objFeatures = pdc.objFeatures
-        pdc.imgFeatures = None
-        pdc.objFeatures = None
-        p.dump( pdc )
-        pdc.objFeatures = objFeatures
-        pdc.imgFeatures = imgFeatures
+        #imgFeatures = pdc.imgFeatures
+        #objFeatures = pdc.objFeatures
+        #pdc.imgFeatures = None
+        #pdc.objFeatures = None
+
+        pdc_container = pdc.export_container()
+        p.dump( pdc_container )
+
+        #pdc.objFeatures = objFeatures
+        #pdc.imgFeatures = imgFeatures
 
         pickleStr = sio.getvalue()
         sio.close()

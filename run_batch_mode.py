@@ -89,12 +89,25 @@ root_log_id_combine2_template = 'yaca-job combine2 method=%(method)s index=%(ind
 root_log_id_analyse_template = 'yaca-job analyse method=%(method)s index=%(index)d (%(param2)d,%(param3)d,%(param4)d,%(exp_factor).2f)'
 root_log_id_analyse2_template = 'yaca-job analyse2 method=%(method)s index=%(index)d (%(param1)d,%(param2)d,%(param3)d,%(param4)d,%(exp_factor).2f)'
 root_log_id_analyse3_template = 'yaca-job analyse3 method=%(method)s index=%(index)d (%(param2)d,%(param3)d,%(param4)d,%(exp_factor).2f)'
+job_state_filename_template = 'states/state_job_%(job-id)d.txt'
+job_state_template = """yaca-job %(job-id)d has been submitted...
+job-type: %(job_type)s
+project-name: %(project_name)s
+method: %(method)s
+index: %(index)s
+param1: %(param1)s
+param2: %(param2)s
+param3: %(param3)s
+param4: %(param4)s
+exp_factor: %(exp_factor).2f
+"""
 
 try:
     general_config = yaml_container[ 'general_config' ]
     project_files = general_config[ 'project_files' ]
     path_prefix = general_config[ 'path_prefix' ]
     profile_metric = general_config[ 'profile_metric' ]
+    control_filter_mode = general_config[ 'control_filter_mode' ]
     profile_pdf_file_template = general_config[ 'profile_pdf_file_template' ]
     profile_xls_file_template = general_config[ 'profile_xls_file_template' ]
     similarity_map_file_template = general_config[ 'similarity_map_file_template' ]
@@ -106,6 +119,7 @@ try:
     analyse2_plot_file_template = general_config[ 'analyse2_plot_file_template' ]
     analyse3_plot_file_template = general_config[ 'analyse3_plot_file_template' ]
     population_plot_file_template = general_config[ 'population_plot_file_template' ]
+    selection_plot_file_template = general_config[ 'selection_plot_file_template' ]
 except:
     print 'Invalid YACA batch configuration file'
     raise
@@ -186,7 +200,7 @@ PBS_script_template = \
 #PBS -o %(output_log)s
 #PBS -e %(error_log)s
 
-/g/pepperkok/hepp/yaca/run_yaca_cluster.sh --batch --config-file "%(config_file)s" --log-file "%(log_file)s" --log-id "%(log_id)s"
+/g/pepperkok/hepp/yaca/run_yaca_cluster.sh --job-id ${YACA_JOB_ID} --batch --config-file "%(config_file)s" --log-file "%(log_file)s" --log-id "%(log_id)s"
 """
 
 PBS_script_cluster_template = \
@@ -195,7 +209,7 @@ PBS_script_cluster_template = \
 #PBS -e %(error_log)s
 #PBS -h
 
-/g/pepperkok/hepp/yaca/run_yaca_cluster.sh --batch --config-file "%(config_file)s" --log-file "%(log_file)s" --log-id "%(log_id)s"
+/g/pepperkok/hepp/yaca/run_yaca_cluster.sh --job-id ${YACA_JOB_ID} --batch --config-file "%(config_file)s" --log-file "%(log_file)s" --log-id "%(log_id)s"
 """
 
 def create_PBS_script(job_format_dict):
@@ -338,6 +352,7 @@ general_config:
   clustering_file: %(clustering_file)s
   combine_maps: False
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -364,7 +379,10 @@ general_config:
   combine_maps: False
   print_population_plot: %(print_population_plot)s
   population_plot_file_template: %(population_plot_file)s
+  print_selection_plot: True
+  selection_plot_file_template: %(selection_plot_file)s
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -388,6 +406,7 @@ general_config:
   combine_maps: True
   only_combine_maps: True
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -412,6 +431,7 @@ general_config:
   combine2_maps: True
   only_combine2_maps: True
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -432,6 +452,7 @@ general_config:
   analyse_maps: True
   only_analyse_maps: True
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -452,6 +473,7 @@ general_config:
   analyse2_maps: True
   only_analyse2_maps: True
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -472,6 +494,7 @@ general_config:
   analyse3_maps: True
   only_analyse3_maps: True
   profile_metric: %(profile_metric)s
+  control_filter_mode: %(control_filter_mode)s
 clustering_config:
   method: %(method)s
   index: %(index)s
@@ -487,6 +510,7 @@ def create_CONFIG_file(job_format_dict, project_file):
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'project_file' ] = project_file
     d[ 'clustering_file' ] = clustering_file_template % job_format_dict
@@ -506,6 +530,7 @@ def create_CONFIG_cluster_file(job_format_dict, project_file, print_population_p
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'project_file' ] = project_file
     d[ 'clustering_file' ] = clustering_file_template % job_format_dict
@@ -515,6 +540,7 @@ def create_CONFIG_cluster_file(job_format_dict, project_file, print_population_p
     d[ 'combined_map_file' ] = combined_map_file_template % job_format_dict
     d[ 'print_population_plot' ] = print_population_plot
     d[ 'population_plot_file' ] = population_plot_file_template % job_format_dict
+    d[ 'selection_plot_file' ] = selection_plot_file_template % job_format_dict
     #d[ 'only_run_clustering' ] = str( only_run_clustering )
     #d[ 'combine_maps' ] = str( combine_maps )
     #d[ 'only_combine_maps' ] = str( only_combine_maps )
@@ -527,6 +553,7 @@ def create_CONFIG_combine_file(job_format_dict, project_file, similarity_map_fil
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'project_file' ] = project_file
     d[ 'similarity_map_files' ] = similarity_map_files
@@ -538,6 +565,7 @@ def create_CONFIG_combine2_file(job_format_dict, project_file, random_similarity
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'project_file' ] = project_file
     d[ 'random_similarity_map_dict' ] = random_similarity_map_dict
@@ -554,6 +582,7 @@ def create_CONFIG_analyse_file(job_format_dict, project_file, random_combined_ma
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'random_combined_map_files' ] = random_combined_map_files
     d[ 'replicate_combined_map_files' ] = replicate_combined_map_files
@@ -565,6 +594,7 @@ def create_CONFIG_analyse2_file(job_format_dict, project_file, random_similarity
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'random_similarity_map_files' ] = random_similarity_map_files
     d[ 'replicate_similarity_map_files' ] = replicate_similarity_map_files
@@ -576,6 +606,7 @@ def create_CONFIG_analyse3_file(job_format_dict, project_file, random_similarity
 
     d = job_format_dict.copy()
     d[ 'profile_metric' ] = profile_metric
+    d[ 'control_filter_mode' ] = control_filter_mode
     d[ 'path_prefix' ] = path_prefix
     d[ 'random_similarity_map_dict' ] = random_similarity_map_dict
     d[ 'replicate_similarity_map_dict' ] = replicate_similarity_map_dict
@@ -598,6 +629,14 @@ def submit_job(PBS_script_filename):
     out,err = p.communicate()
     pid = int( out.split( '.' )[0] )
     return pid
+
+def write_job_state_info(filename, format_dict):
+    for name in [ 'project_name', 'method', 'index', 'param1', 'param2', 'param3', 'param4', 'exp_factor' ]:
+        if name not in format_dict: format_dict[ name ] = '<none>'
+    create_path( filename )
+    f2 = open( filename, 'w' )
+    f2.write( job_state_template % format_dict )
+    f2.close()
 
 def submit_jobs(job_tree, submit=True):
 
@@ -631,7 +670,10 @@ def submit_jobs(job_tree, submit=True):
             parent_job_str = ''
         if not job in done:
             f.write( 'echo -n -e "\\rsubmitting job # %d..."\n' % i )
-            f.write( 'JOB_PID_%d=`/usr/pbs/bin/qsub -q clng_new -W depend=afterok:%s "%s"`\n' % ( i, parent_job_str, job.filename ) )
+            f.write( 'JOB_PID_%d=`/usr/pbs/bin/qsub -v YACA_JOB_ID=%d -q clng_new -W depend=afterok:%s "%s"`\n' % ( i, i, parent_job_str, job.filename ) )
+            job_state_filename = os.path.join( path_prefix, job_state_filename_template % { 'job-id' : i } )
+            job.format_dict[ 'job-id' ] = i
+            write_job_state_info( job_state_filename, job.format_dict )
             if job in job_tree:
                 release_list.append( i )
             d[ job ] = i
@@ -675,8 +717,9 @@ for project_name,project_file in project_files.iteritems():
 clustering_file_dict = {}
 
 class PBS_job:
-    def __init__(self, filename, parents=None):
+    def __init__(self, filename, format_dict, parents=None):
         self.filename = filename
+        self.format_dict = format_dict
         self.parents = parents
         if parents != None:
             if type( self.parents ) != list:
@@ -743,9 +786,9 @@ for method in clustering_method_list:
 
                         #job_pid = submit_job( PBS_script_file )
                         #print 'submitted job %d' % job_pid
-                        job = PBS_job( PBS_script_file )
-                        PBS_jobs.append( job )
                         job_format_dict[ 'job_type' ] = 'cluster'
+                        job = PBS_job( PBS_script_file, job_format_dict )
+                        PBS_jobs.append( job )
                         add_job( job_list, job, job_format_dict )
 
                         clustering_file = clustering_file_template % job_format_dict
@@ -768,9 +811,9 @@ for method in clustering_method_list:
 
                                 #pid = submit_job( PBS_script_file )
                                 #print 'submitted job %d' % pid
-                                child_job = PBS_job( PBS_script_file, job )
-                                similarity_map_filename = os.path.join( path_prefix, similarity_map_file_template % job_format_dict )
                                 job_format_dict[ 'job_type' ] = 'default'
+                                child_job = PBS_job( PBS_script_file, job_format_dict, job )
+                                similarity_map_filename = os.path.join( path_prefix, similarity_map_file_template % job_format_dict )
                                 add_job( job_list, child_job, job_format_dict, similarity_map_filename )
                                 #job.add_child( child_job )
 
@@ -819,12 +862,12 @@ for method in clustering_method_list:
 
                                 #pid = submit_job( PBS_script_file )
                                 #print 'submitted job %d' % pid
-                                child_job = PBS_job( PBS_script_file, parent_jobs )
+                                job_format_dict[ 'job_type' ] = 'combine'
+                                child_job = PBS_job( PBS_script_file, job_format_dict, parent_jobs )
                                 #job.add_child( child_job )
                                 combine_jobs.append( child_job )
 
                                 combined_map_filename = os.path.join( path_prefix, combined_map_file_template % job_format_dict )
-                                job_format_dict[ 'job_type' ] = 'combine'
                                 add_job( job_list, child_job, job_format_dict, combined_map_filename )
 
                                 combined_map_files.append( combined_map_filename )
@@ -840,11 +883,11 @@ for method in clustering_method_list:
 
                             #pid = submit_job( PBS_script_file )
                             #print 'submitted job %d' % pid
-                            child_job = PBS_job( PBS_script_file, combine_jobs )
+                            job_format_dict[ 'job_type' ] = 'combine_all'
+                            child_job = PBS_job( PBS_script_file, job_format_dict, combine_jobs )
                             #job.add_child( child_job )
 
                             combined_map_filename = os.path.join( path_prefix, combined_map_file_template % job_format_dict )
-                            job_format_dict[ 'job_type' ] = 'combine_all'
                             add_job( job_list, child_job, job_format_dict, combined_map_filename )
 
 
@@ -902,13 +945,14 @@ for method in clustering_method_list:
                             PBS_script_file = os.path.join( path_prefix, pbs_combine2_script_file_template % job_format_dict )
                             write_to_file( PBS_script_file, PBS_script )
 
+                            job_format_dict[ 'job_type' ] = 'combine2'
+
                             #pid = submit_job( PBS_script_file )
                             #print 'submitted job %d' % pid
-                            child_job = PBS_job( PBS_script_file, parent_jobs )
+                            child_job = PBS_job( PBS_script_file, job_format_dict, parent_jobs )
                             #job.add_child( child_job )
 
                             #combined2_map_filename = os.path.join( path_prefix, combined2_map_file_template % job_format_dict )
-                            job_format_dict[ 'job_type' ] = 'combine2'
                             add_job( job_list, child_job, job_format_dict )
 
 
@@ -960,12 +1004,13 @@ for method in clustering_method_list:
                             PBS_script_file = os.path.join( path_prefix, pbs_analyse_script_file_template % job_format_dict )
                             write_to_file( PBS_script_file, PBS_script )
 
+                            job_format_dict[ 'job_type' ] = 'analyse'
+
                             #pid = submit_job( PBS_script_file )
                             #print 'submitted job %d' % pid
-                            child_job = PBS_job( PBS_script_file, parent_jobs )
+                            child_job = PBS_job( PBS_script_file, job_format_dict, parent_jobs )
                             #job.add_child( child_job )
 
-                            job_format_dict[ 'job_type' ] = 'analyse'
                             add_job( job_list, child_job, job_format_dict )
 
 
@@ -1012,12 +1057,12 @@ for method in clustering_method_list:
                                 PBS_script_file = os.path.join( path_prefix, pbs_analyse2_script_file_template % job_format_dict )
                                 write_to_file( PBS_script_file, PBS_script )
 
+                                job_format_dict[ 'job_type' ] = 'analyse2'
                                 #pid = submit_job( PBS_script_file )
                                 #print 'submitted job %d' % pid
-                                child_job = PBS_job( PBS_script_file, parent_jobs )
+                                child_job = PBS_job( PBS_script_file, job_format_dict, parent_jobs )
                                 #job.add_child( child_job )
 
-                                job_format_dict[ 'job_type' ] = 'analyse2'
                                 add_job( job_list, child_job, job_format_dict )
 
 
@@ -1082,12 +1127,12 @@ for method in clustering_method_list:
                             PBS_script_file = os.path.join( path_prefix, pbs_analyse3_script_file_template % job_format_dict )
                             write_to_file( PBS_script_file, PBS_script )
 
+                            job_format_dict[ 'job_type' ] = 'analyse3'
                             #pid = submit_job( PBS_script_file )
                             #print 'submitted job %d' % pid
-                            child_job = PBS_job( PBS_script_file, parent_jobs )
+                            child_job = PBS_job( PBS_script_file, job_format_dict, parent_jobs )
                             #job.add_child( child_job )
 
-                            job_format_dict[ 'job_type' ] = 'analyse3'
                             add_job( job_list, child_job, job_format_dict )
 
 

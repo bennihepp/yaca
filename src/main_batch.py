@@ -30,7 +30,9 @@ combine2_maps = False
 only_combine_maps = False
 clustering_file = None
 population_plot_file_template = 'population_plots/population_plot_%(project_name)s.pdf'
+selection_plot_file_template = 'selection_plots/selection_plot_%(project_name)s.pdf'
 print_population_plot = False
+print_selection_plot = False
 analyse_maps = False
 only_analyse_maps = False
 analyse2_maps = False
@@ -39,7 +41,7 @@ analyse3_maps = False
 only_analyse3_maps = False
 profile_metric = 'summed_minmax'
 control_filter_mode = 'MEDIAN_xMAD'
-invert_profile_heatmap = False
+job_state_filename_template = 'states/state_job_%(job-id)d.txt'
 
 skip_next = 0
 
@@ -75,7 +77,6 @@ def make_clustering_param_list(x):
                 l.append( y )
     return l
 
-
 if len( sys.argv ) > 1:
     for i in xrange( 1, len( sys.argv ) ):
 
@@ -91,24 +92,34 @@ if len( sys.argv ) > 1:
 
         if arg == '--clustering-method':
             clustering_method_list = next_arg
+            skip_next = 1
         elif arg == '--clustering-index':
             clustering_index_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param1':
             clustering_param1_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param2':
             clustering_param2_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param3':
             clustering_param3_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param4':
             clustering_param4_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--clustering-exp-factor':
             clustering_exp_factor_list = make_clustering_param_list( next_arg )
+            skip_next = 1
         elif arg == '--config-file':
             config_file = next_arg
             skip_next = 1
         elif arg == '--help':
             print_help()
             sys.exit( 0 )
+        elif arg == '--job-id':
+            job_state_filename = job_state_filename_template % { 'job-id' : int( next_arg ) }
+            skip_next = 1
         else:
             sys.stderr.write( 'Unknown option: %s\n' % arg )
             print_help()
@@ -226,6 +237,9 @@ try:
     if 'print_population_plot' in general_config: print_population_plot = general_config[ 'print_population_plot' ]
     if print_population_plot:
         if 'population_plot_file_template' in general_config: population_plot_file_template = general_config[ 'population_plot_file_template' ]
+    if 'print_selection_plot' in general_config: print_selection_plot = general_config[ 'print_selection_plot' ]
+    if print_selection_plot:
+        if 'selection_plot_file_template' in general_config: selection_plot_file_template = general_config[ 'selection_plot_file_template' ]
 except:
     print 'Invalid YACA batch configuration file'
     raise
@@ -344,6 +358,10 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
             filter_mode = pipeline.analyse.FILTER_MODE_MEDIAN_xMAD
         elif control_filter_mode == 'xMEDIAN':
             filter_mode = pipeline.analyse.FILTER_MODE_xMEDIAN
+        elif control_filter_mode == 'MEDIAN_xMAD_AND_LIMIT':
+            filter_mode = pipeline.analyse.FILTER_MODE_MEDIAN_xMAD_AND_LIMIT
+        elif control_filter_mode == 'xMEDIAN_AND_LIMIT':
+            filter_mode = pipeline.analyse.FILTER_MODE_xMEDIAN_AND_LIMIT
         else:
             raise Exception( 'Unknown control filter mode: %s' % control_filter_mode )
 
@@ -365,6 +383,12 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
             filename = os.path.join( path_prefix, population_plot_file_template %  { 'project_name' : project_name } )
             batch_utils.create_path( filename )
             print_engine.print_cell_populations_and_penetrance( pl, filename )
+
+        if print_selection_plot:
+            print '  Printing selection plots...'
+            filename = os.path.join( path_prefix, selection_plot_file_template %  { 'project_name' : project_name } )
+            batch_utils.create_path( filename )
+            print_engine.print_cell_selection_plot( pl, filename )
 
 
         for i in xrange( len( clustering_param_set ) ):
@@ -452,11 +476,34 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
 
             if not only_run_clustering:
 
+
+                nonEmptyProfileIndices = range( pl.nonControlClusterProfiles.shape[0] )
+
+                for i in xrange( pl.nonControlClusterProfiles.shape[0] ):
+
+                    if numpy.all( pl.nonControlClusterProfiles[ i ] == 0 ):
+                        nonEmptyProfileIndices.remove( i )
+
+                treatmentLabels = []
+                for i in xrange( len( pl.pdc.treatments ) ):
+                    if i in nonEmptyProfileIndices:
+                        treatmentLabels.append( pl.pdc.treatments[ i ].name )
+
+                clusterProfiles = pl.nonControlClusterProfiles[ nonEmptyProfileIndices ]
+
+                distanceHeatmap = batch_utils.compute_treatment_distance_map( clusterProfiles, profile_metric )
+                similarityHeatmap = batch_utils.compute_treatment_similarity_map( distanceHeatmap, profile_metric )
+                #profileHeatmap = batch_utils.compute_treatment_similarity_map( clusterProfiles )
+
+                print 'distanceHeatmap:', distanceHeatmap
+                print 'similarityHeatmap:', similarityHeatmap
+
                 print 'Printing cluster profiles...'
 
                 pdf_filename = os.path.join( path_prefix, profile_pdf_file_template % template_format_dict )
                 batch_utils.create_path( pdf_filename)
-                sum_minmax_profileHeatmap, l2_chi2_norm_profileHeatmap, treatments = print_engine.print_cluster_profiles_and_heatmap( pl.pdc, pl.nonControlClusterProfiles, pdf_filename, True, 0.0 )
+                #sum_minmax_profileHeatmap, l2_chi2_norm_profileHeatmap, treatments = print_engine.print_cluster_profiles_and_heatmap( pl.pdc, clusterProfiles, pdf_filename, True, 0.0 )
+                print_engine.print_cluster_profiles_and_heatmap( treatmentLabels, clusterProfiles, similarityHeatmap, pdf_filename, True, 0.0 )
 
                 print 'Writing profile heatmap xls file...'
 
@@ -464,11 +511,11 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
                             % template_format_dict
                 xls_filename = os.path.join( path_prefix, profile_xls_file_template % template_format_dict )
                 batch_utils.create_path( xls_filename )
-                batch_utils.write_profileHeatmapCSV( xls_title, treatments, sum_minmax_profileHeatmap, xls_filename )
+                batch_utils.write_profileHeatmapCSV( xls_title, treatmentLabels, similarityHeatmap, xls_filename )
 
                 print 'profile_metric:', profile_metric
 
-                if profile_metric == 'summed_minmax':
+                """if profile_metric == 'summed_minmax':
                     invert_profile_heatmap = True
                     profileHeatmap = sum_minmax_profileHeatmap
                     #for i in xrange( profileHeatmap.shape[0] ):
@@ -490,11 +537,11 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
                         for j in xrange( i, profileHeatmap.shape[0] ):
                             profileHeatmap[ j, i ] = profileHeatmap[ i, j ]
                 else:
-                    raise Exception( 'No such profile metric: %s' % profile_metric )
+                    raise Exception( 'No such profile metric: %s' % profile_metric )"""
 
                 print 'Computing similarity map...'
 
-                treatmentMask = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
+                """treatmentMask = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
                 #fullTreatmentMask = numpy.ones( ( len( pdc.treatments ), len( pdc.treatments ) ), dtype=bool )
                 for i in xrange( len( pdc.treatments ) ):
                     tr = pdc.treatments[ i ]
@@ -513,12 +560,12 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
 
                 labels = []
                 for tr in treatments:
-                    labels.append( tr.name )
+                    labels.append( tr.name )"""
                 #for i in xrange( len( pdc.treatments ) ):
                 #    if treatmentMask[ i ] and not pdc.treatments[i].name.endswith('*'):
                 #        labels.append( pdc.treatments[ i ].name )
 
-                treatmentSimilarityMap = batch_utils.compute_treatment_similarity_map( profileHeatmap )
+                treatmentSimilarityMap = batch_utils.compute_modified_treatment_similarity_map( similarityHeatmap )
 
                 #maskedProfileHeatmap = profileHeatmap[ treatmentMask ][ :, treatmentMask ]
 
@@ -531,21 +578,18 @@ if not ( combine_maps and only_combine_maps ) and not ( combine2_maps and only_c
 
                 filename = os.path.join( path_prefix, similarity_map_file_template % template_format_dict )
                 batch_utils.create_path( filename )
-                if invert_profile_heatmap:
-                    print_engine.print_treatment_similarity_map( 1.0 - floatTreatmentSimilarityMap, labels, filename )
-                else:
-                    print_engine.print_treatment_similarity_map( floatTreatmentSimilarityMap, labels, filename )
+                print_engine.print_treatment_similarity_map( floatTreatmentSimilarityMap, treatmentLabels[::2], filename )
 
                 print 'Writing similarity map xls file...'
 
                 xls_title = 'Similarity map for %(project_name)s with method=%(method)s, index=%(index)d, param1=%(param1)d, param2=%(param2)d, param3=%(param3)d, param4=%(param4)d, exp_factor=%(exp_factor).1f' \
                             % template_format_dict
-                batch_utils.write_similarityMapCSV( xls_title, labels, floatTreatmentSimilarityMap, filename+'.xls' )
+                batch_utils.write_similarityMapCSV( xls_title, treatmentLabels[::2], floatTreatmentSimilarityMap, filename+'.xls' )
 
                 f = open( filename + '.pic', 'w' )
                 import cPickle
                 p = cPickle.Pickler( f )
-                p.dump( ( treatmentSimilarityMap, labels ) )
+                p.dump( ( treatmentSimilarityMap, treatmentLabels[::2] ) )
                 f.close()
 
                 similarity_map_files.append( filename )
@@ -624,6 +668,8 @@ if combine_maps:
 
         print summed_map
 
+        #labels = labels[ ::2 ]
+
         print 'Printing combined similarity map...'
 
         template_format_dict = clustering_param_set[ 0 ].copy()
@@ -631,15 +677,9 @@ if combine_maps:
 
         title = 'Combined similarity map of treatments'
 
-        if profile_metric == 'summed_minmax':
-            invert_profile_heatmap = True
-
         filename = os.path.join( path_prefix, combined_map_file_template % template_format_dict )
         batch_utils.create_path( filename )
-        if invert_profile_heatmap:
-            print_engine.print_treatment_similarity_map( 1.0 - summed_map, labels, filename, title )
-        else:
-            print_engine.print_treatment_similarity_map( summed_map, labels, filename, title )
+        print_engine.print_treatment_similarity_map( 1.0 - summed_map, labels, filename, title )
 
         if project_name.startswith( 'random' ):
             random_combined_map_files.append( filename )
@@ -659,6 +699,19 @@ if combine_maps:
         f.close()
 
 
+
+def compute_map_quality(map):
+    diagonal_mask = numpy.identity( map.shape[0], dtype=bool )
+    non_diagonal_mask = numpy.invert( diagonal_mask )
+    diagonal_mean = numpy.mean( map[ diagonal_mask ] )
+    non_diagonal_mean = numpy.mean( map[ non_diagonal_mask ] )
+    quality = diagonal_mean - non_diagonal_mean
+    return quality
+
+
+#if profile_metric == 'summed_minmax':
+#    invert_profile_heatmap = True
+
 if combine2_maps:
 
     print 'Computing combined (2) similarity maps...'
@@ -672,6 +725,11 @@ if combine2_maps:
     mean_replicate_map_dict = {}
     #std_random_map_dict = {}
     #std_replicate_map_dict = {}
+
+    mean_random_map_quality_dict = {}
+    mean_replicate_map_quality_dict = {}
+    std_random_map_quality_dict = {}
+    std_replicate_map_quality_dict = {}
 
     for param1 in keys:
 
@@ -716,6 +774,20 @@ if combine2_maps:
 
             replicate_similarity_maps.append( map )
 
+        random_map_qualities = []
+        for map in random_similarity_maps:
+            quality = compute_map_quality( map )
+            random_map_qualities.append( quality )
+        mean_random_map_quality_dict[ param1 ] = numpy.mean( random_map_qualities )
+        std_random_map_quality_dict[ param1 ] = numpy.std( random_map_qualities )
+
+        replicate_map_qualities = []
+        for map in replicate_similarity_maps:
+            quality = compute_map_quality( map )
+            replicate_map_qualities.append( quality )
+        mean_replicate_map_quality_dict[ param1 ] = numpy.mean( replicate_map_qualities )
+        std_replicate_map_quality_dict[ param1 ] = numpy.std( replicate_map_qualities )
+
         mean_random_map_dict[ param1 ] = numpy.mean( random_similarity_maps, axis=0 )
         #std_random_map_dict[ param1 ] = numpy.std( random_similarity_maps, axis=0 )
         mean_replicate_map_dict[ param1 ] = numpy.mean( replicate_similarity_maps, axis=0 )
@@ -724,17 +796,11 @@ if combine2_maps:
 
         print 'Printing combined (2) similarity maps for %(param1)d clusters...' % template_format_dict
 
-        title = 'Combined similarity map for %(param1)d clusters and random splits' % template_format_dict
-
-        if profile_metric == 'summed_minmax':
-            invert_profile_heatmap = True
+        title = 'Combined2 similarity map for %(param1)d clusters and random splits' % template_format_dict
 
         filename = os.path.join( path_prefix, combined2_random_map_file_template % template_format_dict )
         batch_utils.create_path( filename )
-        if invert_profile_heatmap:
-            print_engine.print_treatment_similarity_map( 1.0 - mean_random_map_dict[ param1 ], labels, filename, title )
-        else:
-            print_engine.print_treatment_similarity_map( mean_random_map_dict[ param1 ], labels, filename, title )
+        print_engine.print_treatment_similarity_map( mean_random_map_dict[ param1 ], labels, filename, title )
 
         xls_title = 'Combined2 random map with method=%(method)s, index=%(index)d, param1=%(param1)d, param2=%(param2)d, param3=%(param3)d, param4=%(param4)d, exp_factor=%(exp_factor).1f' \
                     % template_format_dict
@@ -746,14 +812,11 @@ if combine2_maps:
         p.dump( ( mean_random_map_dict[ param1 ], labels ) )
         f.close()
 
-        title = 'Combined similarity map for %(param1)d clusters and replicate splits' % template_format_dict
+        title = 'Combined2 similarity map for %(param1)d clusters and replicate splits' % template_format_dict
 
         filename = os.path.join( path_prefix, combined2_replicate_map_file_template % template_format_dict )
         batch_utils.create_path( filename )
-        if invert_profile_heatmap:
-            print_engine.print_treatment_similarity_map( 1.0 - mean_replicate_map_dict[ param1 ], labels, filename, title )
-        else:
-            print_engine.print_treatment_similarity_map( mean_replicate_map_dict[ param1 ], labels, filename, title )
+        print_engine.print_treatment_similarity_map( mean_replicate_map_dict[ param1 ], labels, filename, title )
 
         xls_title = 'Combined2 replicate map with method=%(method)s, index=%(index)d, param1=%(param1)d, param2=%(param2)d, param3=%(param3)d, param4=%(param4)d, exp_factor=%(exp_factor).1f' \
                     % template_format_dict
@@ -765,31 +828,36 @@ if combine2_maps:
         p.dump( ( mean_replicate_map_dict[ param1 ], labels ) )
         f.close()
 
-    random_results = []
-    replicate_results = []
+    mean_random_map_qualities = []
+    std_random_map_qualities = []
+    mean_replicate_map_qualities = []
+    std_replicate_map_qualities = []
 
     random_str = 'random splits\t'
     replicate_str = 'replicate splits\t'
     for key in keys:
-        def compute_map_quality(map):
-            diagonal_mask = numpy.identity( map.shape[0], dtype=bool )
-            non_diagonal_mask = numpy.invert( diagonal_mask )
-            diagonal_mean = numpy.mean( map[ diagonal_mask ] )
-            non_diagonal_mean = numpy.mean( map[ non_diagonal_mask ] )
-            quality = diagonal_mean - non_diagonal_mean
-            return quality
-        random_quality = compute_map_quality( mean_random_map_dict[ key ] )
-        replicate_quality = compute_map_quality( mean_replicate_map_dict[ key ] )
-        random_results.append( random_quality )
-        replicate_results.append( replicate_quality )
-        random_str += '%.2f\t' % random_quality
-        replicate_str += '%.2f\t' % replicate_quality
+        mean_random_map_qualities.append( mean_random_map_quality_dict[ key ] )
+        std_random_map_qualities.append( std_random_map_quality_dict[ key ] )
+        mean_replicate_map_qualities.append( mean_replicate_map_quality_dict[ key ] )
+        std_replicate_map_qualities.append( std_replicate_map_quality_dict[ key ] )
+        random_str += '%.2f +- %.2f\t' % ( mean_random_map_quality_dict[ key ], std_random_map_quality_dict[ key ] )
+        replicate_str += '%.2f +- %.2f\t' % ( mean_replicate_map_quality_dict[ key ], std_replicate_map_quality_dict[ key ] )
     random_str = random_str[ :-1 ] + '\n'
     replicate_str = replicate_str[ :-1 ] + '\n'
 
     filename = os.path.join( path_prefix, combined2_results_file_template % template_format_dict )
     batch_utils.create_path( filename )
-    print_engine.print_analyse_plot( random_results, None, replicate_results, None, keys, filename, 'Similarity map qualities', '# of clusters', 'quality' )
+    print_engine.print_analyse_plot(
+                                    mean_random_map_qualities,
+                                    std_random_map_qualities,
+                                    mean_replicate_map_qualities,
+                                    std_replicate_map_qualities,
+                                    keys,
+                                    filename,
+                                    'Similarity map qualities',
+                                    '# of clusters',
+                                    'quality'
+    )
 
     filename = filename + '.xls'
     batch_utils.create_path( filename )
@@ -856,7 +924,6 @@ if analyse_maps:
         replicate_diagonals[ len( replicate_combined_maps ) ] = map[ numpy.identity( map.shape[0], dtype=bool ) ]
         replicate_combined_maps.append( map )
 
-
     random_mean = numpy.mean( random_diagonals, axis=0 )
     random_std = numpy.std( random_diagonals, axis=0 )
 
@@ -869,7 +936,15 @@ if analyse_maps:
 
     filename = os.path.join( path_prefix, analyse_plot_file_template % template_format_dict )
     batch_utils.create_path( filename )
-    print_engine.print_analyse_plot( random_mean, random_std, replicate_mean, replicate_std, labels, filename, title )
+    print_engine.print_analyse_plot(
+                                    random_mean,
+                                    random_std,
+                                    replicate_mean,
+                                    replicate_std,
+                                    labels,
+                                    filename,
+                                    title
+    )
 
 
 if analyse2_maps:
@@ -1051,4 +1126,5 @@ if analyse3_maps:
     batch_utils.create_path( filename )
     print_engine.print_analyse_plot( random_mean, random_std, replicate_mean, replicate_std, key_labels, filename, title, xlabel )
 
-    
+if job_state_filename != None:
+    os.remove( os.path.join( path_prefix, job_state_filename ) )

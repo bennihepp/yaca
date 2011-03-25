@@ -24,8 +24,12 @@ class AbstractThreadBase(object):
         self.wait()
 
         if self.__exception != None:
+            print 'An exception was raised in a running thread:'
             print self.__traceback
-            raise self.__exception
+            return False
+            #raise self.__exception
+
+        return True
 
     def run(self):
         """This is the method that is called when the thread is started

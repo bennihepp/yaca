@@ -73,8 +73,10 @@ def reject_cells_with_bad_features( pdc, imageMask, cellMask ):
     return cellMask, featureIds, bad_feature_cell_count
 
 
-FILTER_MODE_MEDIAN_xMAD = 0
-FILTER_MODE_xMEDIAN     = 1
+FILTER_MODE_MEDIAN_xMAD             = 0
+FILTER_MODE_xMEDIAN                 = 1
+FILTER_MODE_MEDIAN_xMAD_AND_LIMIT   = 2
+FILTER_MODE_xMEDIAN_AND_LIMIT       = 3
 
 def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIAN_xMAD ):
     """Make a heuristic guess about which cells are control-like cells and which cells are not
@@ -167,9 +169,9 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
     ctrl_median_mahal_dist = numpy.median( mahal_dist[ control_treatment_mask ] )
     ctrl_mad_mahal_dist = numpy.median( numpy.abs( mahal_dist[ control_treatment_mask ] - ctrl_median_mahal_dist ) )
     # compute cutoff_threshold as median + <control_cutoff_threshold> * mad
-    if filterMode == FILTER_MODE_MEDIAN_xMAD:
+    if filterMode == FILTER_MODE_MEDIAN_xMAD or filterMode == FILTER_MODE_MEDIAN_xMAD_AND_LIMIT:
         cutoff_mahal_dist = ctrl_median_mahal_dist + control_cutoff_threshold * ctrl_mad_mahal_dist
-    elif filterMode == FILTER_MODE_xMEDIAN:
+    elif filterMode == FILTER_MODE_xMEDIAN or filterMode == FILTER_MODE_xMEDIAN_AND_LIMIT:
         cutoff_mahal_dist = control_cutoff_threshold * ctrl_median_mahal_dist
     # the same could also be done with the mean instead of the median
     #mean_mahal_dist = numpy.mean( mahal_dist[ control_treatment_mask ] )
@@ -181,6 +183,11 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
     #print 'mean=%f' % mean_mahal_dist
     # print out the threshold value for the cutoff
     print 'cutoff_mahal_dist=%f' % cutoff_mahal_dist
+
+    cell_selection_stats = {}
+    cell_selection_stats[ 'ctrl_median_mahal_dist' ] = ctrl_median_mahal_dist
+    cell_selection_stats[ 'ctrl_mad_mahal_dist' ] = ctrl_mad_mahal_dist
+    cell_selection_stats[ 'cutoff_mahal_dist_first' ] = cutoff_mahal_dist
 
     # create a mask according to the cutoff-threshold
     cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
@@ -213,15 +220,21 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
         # extract all the non-control-like cells (combined with the cellMask of valid cells
         nonControlCellMask = numpy.logical_and( cellMask , cutoffCellMask )"""
 
-    mask1 = numpy.logical_and( nonControlCellMask, control_treatment_mask )
-    print ( numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) )
-    if numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) > 0.1:
-        values = numpy.sort( mahal_dist[ control_treatment_mask ] )
-        index = int( 0.9 * values.shape[0] + 1 )
-        index = min( index, values.shape[0] - 1 )
-        print cutoff_mahal_dist
-        cutoff_mahal_dist = values[ index ]
-        print cutoff_mahal_dist
+    if filterMode == FILTER_MODE_xMEDIAN_AND_LIMIT or filterMode == FILTER_MODE_MEDIAN_xMAD_AND_LIMIT:
+
+        mask1 = numpy.logical_and( nonControlCellMask, control_treatment_mask )
+        print ( numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) )
+        if numpy.sum( mask1 ) / float( numpy.sum( control_treatment_mask ) ) > 0.1:
+            values = numpy.sort( mahal_dist[ control_treatment_mask ] )
+            index = int( 0.9 * values.shape[0] + 1 )
+            index = min( index, values.shape[0] - 1 )
+            print cutoff_mahal_dist
+            cutoff_mahal_dist = values[ index ]
+            print cutoff_mahal_dist
+
+    print 'cutoff_mahal_dist=%f' % cutoff_mahal_dist
+
+    cell_selection_stats[ 'cutoff_mahal_dist' ] = cutoff_mahal_dist
 
     # create a mask according to the cutoff-threshold
     cutoffCellMask = mahal_dist[ : ] > cutoff_mahal_dist
@@ -229,6 +242,15 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
     controlCellMask = numpy.logical_and( cellMask , numpy.logical_not( cutoffCellMask ) )
     # extract all the non-control-like cells (combined with the cellMask of valid cells
     nonControlCellMask = numpy.logical_and( cellMask , cutoffCellMask )
+
+
+    cell_selection_stats[ 'cutoff_mahal_dist' ] = cutoff_mahal_dist
+
+    cell_selection_stats[ 'median_mahal_dist' ] = []
+    cell_selection_stats[ 'mad_mahal_dist' ] = []
+    cell_selection_stats[ 'median_mahal_cutoff_dist' ] = []
+    cell_selection_stats[ 'mad_mahal_cutoff_dist' ] = []
+
 
     treatment_mask_1 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
     print 'mahalanobis medians and mads of treatments..'
@@ -241,6 +263,8 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
             print 'treatment %s might not show a phenotype!!!' % tr.name
             treatment_mask_1[ i ] = False
         print '  %s: %f +- %f' % ( tr.name, median_mahal_dist, mad_mahal_dist )
+        cell_selection_stats[ 'median_mahal_dist' ].append( median_mahal_dist )
+        cell_selection_stats[ 'mad_mahal_dist' ].append( mad_mahal_dist )
 
     treatment_mask_2 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
     print 'mahalanobis medians and mads of cutoff treatments..'
@@ -253,6 +277,8 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
             print 'treatment %s might not show a phenotype!!!' % tr.name
             treatment_mask_2[ i ] = False
         print '  %s: %f +- %f' % ( tr.name, median_mahal_dist, mad_mahal_dist )
+        cell_selection_stats[ 'median_mahal_cutoff_dist' ].append( median_mahal_dist )
+        cell_selection_stats[ 'mad_mahal_cutoff_dist' ].append( mad_mahal_dist )
 
     treatment_mask_3 = numpy.ones( ( len( pdc.treatments ), ), dtype=bool )
     print 'penetrance of treatments..'
@@ -305,7 +331,7 @@ def reject_control_cells( pdc, imageMask, cellMask, filterMode=FILTER_MODE_MEDIA
     #   - Mask of suspected control cells
     #   - Mask of suspected non-control cells
     #   - List of feature IDs that have been taken into account
-    return controlCellMask, nonControlCellMask, featureIds, mahal_dist
+    return controlCellMask, nonControlCellMask, featureIds, mahal_dist, cell_selection_stats
 
 
 

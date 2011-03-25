@@ -24,5 +24,5 @@ export PATH
 export LD_LIBRARY_PATH
 export PYTHONPATH
 
-python2.6 /g/pepperkok/hepp/yaca_working/main.py --no-opengl "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+python2.6 /g/pepperkok/hepp/yaca_working/main.py --no-opengl "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
 

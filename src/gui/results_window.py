@@ -1926,6 +1926,15 @@ class ResultsWindow(QMainWindow):
 
     def on_clustering_finished(self):
 
+
+        import time
+        t2 = time.time()
+        c2 = time.clock()
+        dt = t2 - self.__clustering_t1
+        dc = c2 - self.__clustering_c1
+        print 'dt: %.2f' % dt
+        print 'dc: %.2f' % dc
+
         result = self.pipeline.get_result()
 
         self.__clustering_running = False
@@ -1971,6 +1980,11 @@ class ResultsWindow(QMainWindow):
             self.pipeline.connect( self.pipeline, SIGNAL('finished()'), self.on_clustering_finished )
 
             self.__clustering_running = True
+
+            import time
+            self.__clustering_t1 = time.time()
+            self.__clustering_c1 = time.clock()
+
             self.pipeline.start_clustering( method, self.supercluster_index, self.cluster_param1, self.cluster_param2, self.cluster_param3, self.cluster_param4 )
 
         return

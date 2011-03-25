@@ -8,6 +8,7 @@ from data_container import *
 
 
 TREATMENT_ID_CP2_FEATURE_NAME = 'Metadata_TREATMENT_ID'
+REPLICATE_ID_CP2_FEATURE_NAME = 'Metadata_REPLICATE_ID'
 
 
 OBJECT_IMAGE_ID_IDENTIFIER = 'ImageNumber'
@@ -72,6 +73,22 @@ def default_treatment_extractor( row, column_names ):
         raise Exception( 'Unable to extract treatment identifier' )
     return treatment_name
 
+REPLICATE_FEATURE_IDENTIFIER = 'Metadata_RelativeImagePath'
+def default_replicate_extractor( row, column_names ):
+    replicate_name = None
+    for i in xrange( len( column_names ) ):
+        name = column_names[i]
+        if name == REPLICATE_FEATURE_IDENTIFIER:
+            # make sure we are windows-compatible
+            v = row[i]
+            v = v.replace('\\','/')
+            #replicate_name = os.path.split( os.path.split(v)[0] )[-1]
+            replicate_name = os.path.split( v )[-2]
+            break
+    if replicate_name == None:
+        raise Exception( 'Unable to extract replicate identifier' )
+    return replicate_name
+
 
 
 def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes):
@@ -128,6 +145,15 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         working_dict[ 'img_treatment_id_feature_is_virtual' ] = True
     pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
 
+    # check if we have to provide a virtual replicateId-feature for the images
+    working_dict[ 'img_replicate_id_feature_is_virtual' ] = False
+    if  ( not pdc.imgFeatureIds.has_key( REPLICATE_ID_FEATURE_NAME ) ) \
+    and ( not pdc.imgFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ) ):
+        print 'creating replicate feature for image'
+        pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
+        working_dict[ 'img_replicate_id_feature_is_virtual' ] = True
+    pdc.imgReplicateFeatureId = pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+
     # check if we have to provide a virtual objectId-feature for the objects
     working_dict[ 'obj_object_id_feature_is_virtual' ] = False
     if not pdc.objFeatureIds.has_key( OBJECT_ID_FEATURE_NAME ):
@@ -150,6 +176,15 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
         working_dict[ 'obj_treatment_id_feature_is_virtual' ] = True
     pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+
+    # check if we have to provide a virtual replicateId-feature for the objects
+    working_dict[ 'obj_replicate_id_feature_is_virtual' ] = False
+    if  ( not pdc.objFeatureIds.has_key( REPLICATE_ID_FEATURE_NAME ) ) \
+    and ( not pdc.objFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ) ):
+        print 'creating replicate feature for objects'
+        pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        working_dict[ 'obj_replicate_id_feature_is_virtual' ] = True
+    pdc.objReplicateFeatureId = pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
 
 
 
@@ -183,7 +218,7 @@ def update_pdc(pdc, image_data, object_data):
 
 
 def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes,
-             image_id_extractor, image_files_extractor, object_position_extractor, treatment_extractor):
+             image_id_extractor, image_files_extractor, object_position_extractor, treatment_extractor, replicate_extractor):
 
     if len( pdc.images ) <= 0:
         init_pdc( pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes )
@@ -228,6 +263,7 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
                 n += 1
 
         try:
+
             if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
                 treatment_name = treatment_extractor( images[i], image_column_names )
             else:
@@ -241,17 +277,44 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
                 img.treatment = treatment
             else:
                 img.treatment = pdc.treatments[ pdc.treatmentByName[ treatment_name ] ]
+
         except Exception,e:
             img.import_state = 'no_treatment'
             tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
             pdc.errors.append( yaca_data_error( e, tb, img ) )
             raise
 
+        try:
+
+            if working_dict[ 'img_replicate_id_feature_is_virtual' ]:
+                replicate_name = replicate_extractor( images[i], image_column_names )
+            else:
+                replicate_name = str( pdc.imgFeatures[ img.rowId, pdc.imgReplicateFeatureId ] )
+
+            if not pdc.replicateByName.has_key(replicate_name):
+                replicate = yaca_data_replicate( replicate_name )
+                replicate.rowId = len( pdc.replicates )
+                pdc.replicateByName[replicate_name] = len( pdc.replicates )
+                pdc.replicates.append( replicate )
+                img.replicate = replicate
+            else:
+                img.replicate = pdc.replicates[ pdc.replicateByName[ replicate_name ] ]
+
+        except Exception,e:
+            img.import_state = 'no_replicate'
+            tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
+            pdc.errors.append( yaca_data_error( e, tb, img ) )
+            raise
+
+
         if working_dict[ 'img_image_id_feature_is_virtual' ]:
             pdc.imgFeatures[img.rowId][ pdc.imgImageFeatureId ] = img.rowId
 
         if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
             pdc.imgFeatures[img.rowId][ pdc.imgTreatmentFeatureId ] = img.treatment.rowId
+
+        if working_dict[ 'img_replicate_id_feature_is_virtual' ]:
+            pdc.imgFeatures[img.rowId][ pdc.imgReplicateFeatureId ] = img.replicate.rowId
 
         pdc.images.append(img)
 
@@ -311,6 +374,9 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         if working_dict[ 'obj_treatment_id_feature_is_virtual' ]:
             pdc.objFeatures[ obj.rowId , pdc.objTreatmentFeatureId ] = obj.image.treatment.rowId
 
+        if working_dict[ 'obj_replicate_id_feature_is_virtual' ]:
+            pdc.objFeatures[ obj.rowId , pdc.objReplicateFeatureId ] = obj.image.replicate.rowId
+
         pdc.objects.append(obj)
 
 
@@ -320,7 +386,8 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                      image_id_extractor=default_image_id_extractor,
                                      image_files_extractor=default_image_files_extractor,
                                      object_position_extractor=default_object_position_extractor,
-                                     treatment_extractor=default_treatment_extractor):
+                                     treatment_extractor=default_treatment_extractor,
+                                     replicate_extractor=default_replicate_extractor):
 
     print 'entering %s ...' % path
 
@@ -344,7 +411,8 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                               image_id_extractor,
                                               image_files_extractor,
                                               object_position_extractor,
-                                              treatment_extractor
+                                              treatment_extractor,
+                                              replicate_extractor
             )
             current_num_of_images += num_of_images
             current_num_of_objects += num_of_objects
@@ -390,7 +458,8 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                 image_id_extractor,
                                 image_files_extractor,
                                 object_position_extractor,
-                                treatment_extractor
+                                treatment_extractor,
+                                replicate_extractor
                         )
                         #all_image_data.append( ( images,img_column_names,img_column_types ) )
                         #all_object_data.append( object_data )
@@ -412,7 +481,8 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
                            image_id_extractor=default_image_id_extractor,
                            image_files_extractor=default_image_files_extractor,
                            object_position_extractor=default_object_position_extractor,
-                           treatment_extractor=default_treatment_extractor):
+                           treatment_extractor=default_treatment_extractor,
+                           replicate_extractor=default_replicate_extractor):
 
     print 'importing results'
 
@@ -429,7 +499,8 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
                                                                      image_id_extractor,
                                                                      image_files_extractor,
                                                                      object_position_extractor,
-                                                                     treatment_extractor )
+                                                                     treatment_extractor,
+                                                                     replicate_extractor )
 
     del working_dict
 

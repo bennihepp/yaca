@@ -12,7 +12,84 @@ def create_path(filename):
     if not os.path.isdir( base ):
         raise Exception( 'Not a directory: %s' % base )
 
-def compute_treatment_similarity_map(profileHeatmap):
+
+def compute_treatment_similarity_map(distanceMap, profile_metric):
+
+    if profile_metric == 'summed_minmax':
+        return 1.0 - distanceMap
+    elif profile_metric == 'l2_norm' or profile_metric == 'chi2_norm':
+        masked_map = distanceMap[ numpy.isfinite( distanceMap ) ]
+        if masked_map.shape[0] == 0:
+            return distanceMap
+        else:
+            max_v = numpy.max( masked_map )
+            if max_v > 0.0:
+                return 1.0 - distanceMap / max_v
+            else:
+                return 1.0 - distanceMap
+    else:
+        raise Exception( 'No such profile metric: %s' % profile_metric )
+
+
+def compute_treatment_distance_map(clusterProfiles, profile_metric, profile_threshold=0.0):
+
+    profileHeatmap = numpy.zeros( ( clusterProfiles.shape[0], clusterProfiles.shape[0] ) )
+    profileHeatmap[ numpy.identity( profileHeatmap.shape[0], dtype=bool ) ] = numpy.nan
+
+    for i in xrange( clusterProfiles.shape[0] ):
+
+        profile1 = clusterProfiles[ i ]
+        norm_profile1 = profile1 / float( numpy.sum( profile1 ) )
+
+        if profile_threshold > 0.0:
+            max = numpy.max( profile1 )
+            threshold_mask = profile1 < max * profile_threshold
+            norm_profile1[ threshold_mask ] = 0.0
+            norm_profile1 = norm_profile1 / float( numpy.sum( norm_profile1 ) )
+
+        for j in xrange( i ):
+
+            profile2 = clusterProfiles[ j ]
+            norm_profile2 = profile2 / float( numpy.sum( profile2 ) )
+
+            if profile_threshold > 0.0:
+                max = numpy.max( profile2 )
+                threshold_mask = profile2 < max * profile_threshold
+                norm_profile2[ threshold_mask ] = 0.0
+                norm_profile2 = norm_profile2 / float( numpy.sum( norm_profile2 ) )
+
+            if profile_metric == 'summed_minmax':
+
+                min_match = numpy.sum( numpy.min( [ norm_profile1, norm_profile2 ], axis=0 )**2 )
+                max_match = numpy.sum( numpy.max( [ norm_profile1, norm_profile2 ], axis=0 )**2 )
+
+                match = min_match / max_match
+
+                dist = 1.0 - match
+
+            elif profile_metric == 'l2_norm':
+
+                # L2-norm
+                dist = numpy.sqrt( numpy.sum( ( norm_profile1 - norm_profile2 ) ** 2 ) )
+
+            elif profile_metric == 'chi2_norm':
+
+                # chi-square
+                dist =  ( norm_profile1 - norm_profile2 ) ** 2 / ( norm_profile1 + norm_profile2 )
+                dist[ numpy.logical_and( norm_profile1 == 0, norm_profile2 == 0 ) ] = 0.0
+
+                dist = numpy.sum( dist )
+
+            else:
+                raise Exception( 'No such profile metric: %s' % profile_metric )
+
+            profileHeatmap[ i, j ] = dist
+            profileHeatmap[ j, i ] = dist
+
+    return profileHeatmap
+
+
+def compute_modified_treatment_similarity_map(profileHeatmap):
 
     """threshold = batch_utils.compute_profile_heatmap_threshold( profileHeatmap )
     print 'similarity_threshold=%f' % threshold
@@ -100,7 +177,7 @@ def write_profileHeatmapCSV(title, treatments, heatmap, filename):
 
         tr = treatments[ i ]
 
-        str = '%s' % tr.name
+        str = '%s' % tr
         if i < len( treatments ) - 1:
             str += '\t'
 
@@ -112,7 +189,7 @@ def write_profileHeatmapCSV(title, treatments, heatmap, filename):
 
         tr = treatments[ i ]
 
-        str = '%s\t' % tr.name
+        str = '%s\t' % tr
 
         f.write( str )
 
@@ -137,7 +214,7 @@ def write_profileHeatmapCSV(title, treatments, heatmap, filename):
 
             tr = treatments[ i ]
 
-            str = '%s' % tr.name
+            str = '%s' % tr
             if i < len( treatments ) - 1:
                 str += '\t'
 

@@ -387,7 +387,7 @@ class Pipeline(Thread):
         return True
 
 
-    def start_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD, progressCallback=None):
+    def start_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD_AND_LIMIT, progressCallback=None):
         """Start the pipeline thread to perform the pre-filtering
     
         Input parameters:
@@ -428,8 +428,10 @@ class Pipeline(Thread):
 
 
         # reject control cells and select the features to be used
-        controlCellMask, nonControlCellMask, featureIds, mahal_dist = analyse.reject_control_cells( self.pdc, self.validImageMask, self.validCellMask, controlFilterMode)
+        controlCellMask, nonControlCellMask, featureIds, mahal_dist, cell_selection_stats = analyse.reject_control_cells( self.pdc, self.validImageMask, self.validCellMask, controlFilterMode)
         #controlCellMask, nonControlCellMask, featureIds = analyse.cutoff_control_cells( self.pdc, featureNames, validImageMask, validCellMask )
+
+        self.cell_selection_stats = cell_selection_stats
 
         if controlCellMask == None:
             return False
@@ -853,11 +855,30 @@ class Pipeline(Thread):
         if param3 == -1:
             param3 = minkowski_p
 
+        #print 'importing time module...'
+        #import time
+        #print 'imported time module'
+
+        #t1 = time.time()
+        #c1 = time.clock()
+        #print 't1: %.2f' % t1
+        #print 'c1: %.2f' % c1
+
         #partition,clusters,Z = cluster.cluster_hierarchical_seeds( norm_features, num_of_clusters, objects_to_cluster, minkowski_p )
         #dist_threshold = 15.0
         #partition,clusters,Z = cluster.hcluster( method, norm_features, param1, param2, supercluster_index, param3 )
         partition,clusters,Z = cluster.hcluster_special( method, norm_features, param1, param2, param4, supercluster_index, param3 )
         self.Z = Z
+
+        #c2 = time.clock()
+        #t2 = time.time()
+        #print 't2: %.2f' % t2
+        #print 'c2: %.2f' % c2
+
+        #dc = c2 - c1
+        #dt = t2 - t1
+        #print 'clocks: %.2f' % dc
+        #print 'time: %.2f' % dt
 
         print partition.shape
         if method not in [ 'kd-tree', 'random' ]:

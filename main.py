@@ -13,6 +13,7 @@ if __name__ == '__main__':
     prev_len = len( sys.argv ) + 1
     while len( sys.argv ) != prev_len:
         prev_len = len( sys.argv )
+
         for i in xrange( j, len( sys.argv ) ):
             j = i
             arg = sys.argv[ i ]
