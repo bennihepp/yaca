@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Project SYSTEM "Project-4.6.dtd">
 <!-- eric4 project file for project yaca -->
-<!-- Saved: 2011-03-17, 17:47:17 -->
+<!-- Saved: 2011-08-10, 10:14:14 -->
 <!-- Copyright (C) 2011 ,  -->
 <Project version="4.6">
   <Language>en</Language>
@@ -48,6 +48,12 @@
     <Source>src/core/headless_cluster_configuration.py</Source>
     <Source>src/core/batch/utils.py</Source>
     <Source>src/core/batch/__init__.py</Source>
+    <Source>src/gui/cell_mask_filter_widget.py</Source>
+    <Source>src/core/command_interpreter.py</Source>
+    <Source>src/core/ext/ccluster_test.py</Source>
+    <Source>src/core/ext/__init__.py</Source>
+    <Source>src/core/ext/ccluster_ext.c</Source>
+    <Source>src/core/ext/SConstruct</Source>
   </Sources>
   <Forms>
   </Forms>

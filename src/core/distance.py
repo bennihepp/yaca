@@ -1,52 +1,68 @@
+# -*- coding: utf-8 -*-
+
+"""
+distance.py -- Distance computations.
+
+- minkowski_dist() computes the Minkowski distance of two or more vectors.
+
+- mahalanobis_distance() computes the Mahalanobis distance of a set of vectors.
+
+- mahalanobis_transformation() computes the transformation matrix into Mahalanobis space.
+- transform_features() transforms a set of vectors with the provided transformation matrix.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import numpy
 import numpy.linalg
 import scipy.spatial
 import scipy.linalg
 
-
-
 def minkowski_dist(a, b, minkowski_p=2):
 
-	if len( a.shape ) == 1:
-		a = numpy.array( [ a ] )
-	if len( b.shape ) == 1:
-		b = numpy.array( [ b ] )
+    if len( a.shape ) == 1:
+        a = numpy.array( [ a ] )
+    if len( b.shape ) == 1:
+        b = numpy.array( [ b ] )
 
-	if minkowski_p == 2:
-	    return scipy.spatial.distance.cdist( a, b, 'euclidean' )
-	elif minkowski_p == 1:
-	    return scipy.spatial.distance.cdist( a, b, 'cityblock' )
-	else:
-	    return scipy.spatial.distance.cdist( a, b, 'minkowski', minkowski_p )
+    if minkowski_p == 2:
+        return scipy.spatial.distance.cdist( a, b, 'euclidean' )
+    elif minkowski_p == 1:
+        return scipy.spatial.distance.cdist( a, b, 'cityblock' )
+    else:
+        return scipy.spatial.distance.cdist( a, b, 'minkowski', minkowski_p )
 
 def weighted_minkowski_dist(a, b, weights, minkowski_p=2):
-	wa = weights * a
-	wb = weights * b
+    wa = weights * a
+    wb = weights * b
 
-	return minkowski_dist( wa, wb, minkowski_p )
+    return minkowski_dist( wa, wb, minkowski_p )
 
 def minkowski_cdist(A, B, minkowski_p=2):
-	if minkowski_p == 2:
-	    return scipy.spatial.distance.cdist( A, B, 'euclidean' )
-	elif minkowski_p == 1:
-	    return scipy.spatial.distance.cdist( A, B, 'cityblock' )
-	else:
-	    return scipy.spatial.distance.cdist( A, B, 'minkowski', minkowski_p )
+    if minkowski_p == 2:
+        return scipy.spatial.distance.cdist( A, B, 'euclidean' )
+    elif minkowski_p == 1:
+        return scipy.spatial.distance.cdist( A, B, 'cityblock' )
+    else:
+        return scipy.spatial.distance.cdist( A, B, 'minkowski', minkowski_p )
 
 def weighted_minkowski_cdist(A, B, weights, minkowski_p=2):
-	wA = weights * A
-	wB = weights * B
-	return minkowski_cdist( wA, wB, minkowski_p )
+    wA = weights * A
+    wB = weights * B
+    return minkowski_cdist( wA, wB, minkowski_p )
 
 
 # Returns the covariance matrix of the passed observations.
 # observations is an MxN array/matrix whereas M is the number of
 # observations and N is the number of dimensions/features
 def covariance_matrix(observations):
-	# by hand
-	#return numpy.dot(observations.transpose(), observations) / len(observations)
-	# or with numpy (bias=1 means normalization by N instead of N-1)
-	return numpy.cov(observations, rowvar=0, bias=1)
+    # by hand
+    #return numpy.dot(observations.transpose(), observations) / len(observations)
+    # or with numpy (bias=1 means normalization by N instead of N-1)
+    return numpy.cov(observations, rowvar=0, bias=1)
 
 
 
@@ -86,17 +102,17 @@ def inverse_covariance_matrix(observations):
 # and L is the number of dimensions/features
 #def mahalanobis_transformation(reference_m):
 
-	# compute the covariance matrix of the reference set
-	#cov = covariance_matrix(reference_m)
+        # compute the covariance matrix of the reference set
+        #cov = covariance_matrix(reference_m)
 
-	# calculate eigenvector
-	#eigenvalues,eigenvectors = numpy.linalg.eigh(cov)
-	# orthogonalize them
-	#trans_m,R = numpy.linalg.qr(eigenvectors)
-	# and denormalize them
-	#trans_m = trans_m / eigenvalues
+        # calculate eigenvector
+        #eigenvalues,eigenvectors = numpy.linalg.eigh(cov)
+        # orthogonalize them
+        #trans_m,R = numpy.linalg.qr(eigenvectors)
+        # and denormalize them
+        #trans_m = trans_m / eigenvalues
 
-	#return trans_m
+        #return trans_m
 
 
 
@@ -107,24 +123,26 @@ def inverse_covariance_matrix(observations):
 # and L is the number of dimensions/features
 def mahalanobis_distance(reference_m, test_m, fraction = 0.8):
 
-    ref_ids = numpy.array(0)
-    ref_ids.resize(reference_m.shape[0])
-    for i in xrange(ref_ids.shape[0]):
-        ref_ids[i] = i
+    ref_ids = numpy.arange( reference_m.shape[0] )
 
     if fraction < 1.0:
-    	dist = mahalanobis_distance(reference_m, reference_m, 1.0)
-    	ref_ids = numpy.argsort(dist)
-    	old_number = reference_m.shape[0]
-    	number = numpy.round( reference_m.shape[0] * fraction) + 1
-    	ref_ids = ref_ids[:number]
-    	reference_m = reference_m[ref_ids]
-    	print 'fraction=%f' % fraction
-    	print 'using %d out of %d objects for mahalanobis distance reference' \
-    			% (number, old_number)
+        dist = mahalanobis_distance(reference_m, reference_m, 1.0)
+        ref_ids = numpy.argsort(dist)
+        old_number = reference_m.shape[0]
+        number = numpy.round( reference_m.shape[0] * fraction) + 1
+        ref_ids = ref_ids[:number]
+        reference_m = reference_m[ref_ids]
+        print 'fraction=%f' % fraction
+        print 'using %d out of %d objects for mahalanobis distance reference' \
+              % (number, old_number)
 
     # compute the mean-value of the reference set
     ref_mean = numpy.mean(reference_m,0)
+
+    """if fraction == 1.0:
+        print 'reference means:'
+        for v in ref_mean:
+            print ' %f' % v"""
 
     # center reference and test set
     reference_centered_m = reference_m - ref_mean
@@ -139,7 +157,21 @@ def mahalanobis_distance(reference_m, test_m, fraction = 0.8):
     # a bit more efficient
     dist_m = numpy.dot(test_centered_m, inv_cov) * test_centered_m
 
-    dist = numpy.sum(dist_m, 1)
+    dist = numpy.sum(dist_m, axis=1)
+
+    """if fraction == 1.0:
+        print 'feature weighting:'
+        m = numpy.zeros( inv_cov.shape[0], dtype=float )
+        for i in xrange( m.shape[0] ):
+            m[:] = 0.0
+            m[i] = 1.0
+            d = numpy.dot( m, inv_cov ) * m
+            d = numpy.sqrt( numpy.sum( d ) )
+            print ' %f' % d"""
+
+    """if fraction == 1.0:
+        print 'inverse covariance matrix:'
+        print inv_cov"""
 
     #return dist,ref_mean,ref_ids
 
@@ -165,25 +197,25 @@ def euclidian_distance_between_all_points(points):
 # and L is the number of dimensions/features
 def mahalanobis_distance_between_all_points(reference_m, test_m):
 
-	# compute the mean-value of the reference set
-	mean = numpy.mean(reference_m,0)
+    # compute the mean-value of the reference set
+    mean = numpy.mean(reference_m,0)
 
-	# compute the inverse covariance matrix of the reference set
-	inv_cov = inverse_covariance_matrix(reference_m)
+    # compute the inverse covariance matrix of the reference set
+    inv_cov = inverse_covariance_matrix(reference_m)
 
-	# this matrix will keep all the distances
-	# all_dist_m[i,j] = distance between point i and point j
-	all_dist_m = numpy.empty( test_m.shape[0] , test_m.shape[0] )
+    # this matrix will keep all the distances
+    # all_dist_m[i,j] = distance between point i and point j
+    all_dist_m = numpy.empty( test_m.shape[0] , test_m.shape[0] )
 
-	# compute the actual distances
-	for i in xrange(test_m.shape[0]):
-		p = test_m[i]
-		diff_m = test_m - p
-		dist_m = numpy.dot(diff_m, inv_cov) * diff_m
-		dist = numpy.transpose(numpy.sum(dist_m, 1))
-		all_dist_m[i] = dist
-		
-	return all_dist_m
+    # compute the actual distances
+    for i in xrange(test_m.shape[0]):
+        p = test_m[i]
+        diff_m = test_m - p
+        dist_m = numpy.dot(diff_m, inv_cov) * diff_m
+        dist = numpy.transpose(numpy.sum(dist_m, 1))
+        all_dist_m[i] = dist
+
+    return all_dist_m
 
 
 
@@ -198,19 +230,19 @@ def mahalanobis_distance_between_all_points(reference_m, test_m):
 # in dist_m.
 def mahalanobis_distance_between_sets(A_m, B_m, inv_cov, dist_m=None):
 
-	if dist_m == None:
-		dist_m = numpy.array(0.0)
-		dist_m.resize(A_m.shape[0],B_m.shape[0])
+    if dist_m == None:
+        dist_m = numpy.array(0.0)
+        dist_m.resize(A_m.shape[0],B_m.shape[0])
 
-	# compute the actual distances
-	for i in xrange(A_m.shape[0]):
-		p = A_m[i]
-		diff_m = B_m - p
-		dist_m = numpy.dot(diff_m, inv_cov) * diff_m
-		dist = numpy.transpose(numpy.sum(dist_m, 1))
-		dist_m[i] = dist
+    # compute the actual distances
+    for i in xrange(A_m.shape[0]):
+        p = A_m[i]
+        diff_m = B_m - p
+        dist_m = numpy.dot(diff_m, inv_cov) * diff_m
+        dist = numpy.transpose(numpy.sum(dist_m, 1))
+        dist_m[i] = dist
 
-	return dist_m
+    return dist_m
 
 
 
@@ -233,6 +265,8 @@ def transform_features( features, transformation, center=True ):
     if center:
         mean = numpy.mean( features, 0 )
         transformed_features = features - mean
+    else:
+        transformed_features = features
 
     # transform features according to transformation
     transformed_features = numpy.dot( transformation , transformed_features.transpose() ).transpose()

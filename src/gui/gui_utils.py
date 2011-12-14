@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+
+"""
+gui_utils.py -- Utils for loading images and features for displaying.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys, os, random
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -10,6 +21,7 @@ import ImageEnhance
 import time
 #from libtiff import TIFF
 
+from ..core.quality_control import QUALITY_CONTROL_DESCR
 
 
 class CellFeatureTextFactory(object):
@@ -30,6 +42,12 @@ class CellFeatureTextFactory(object):
         if featureId < self.mahalFeatureIdOffset or self.mahalFeatures == None:
             if featureId == self.pdc.objTreatmentFeatureId:
                 return self.pdc.treatments[ int( self.features[ index, featureId ] ) ].name
+            elif featureId == self.pdc.objReplicateFeatureId:
+                return self.pdc.replicates[ int( self.features[ index, featureId ] ) ].name
+            elif featureId == self.pdc.objWellFeatureId:
+                return self.pdc.wells[ int( self.features[ index, featureId ] ) ].name
+            elif featureId == self.pdc.objQualityControlFeatureId:
+                return QUALITY_CONTROL_DESCR[ self.features[ index, featureId ] ]
             else:
                 return self.features[ index , featureId ]
 
@@ -52,6 +70,12 @@ class ImageFeatureTextFactory(object):
 
         if featureId == self.pdc.imgTreatmentFeatureId:
             return self.pdc.treatments[ int( self.features[ index, featureId ] ) ].name
+        elif featureId == self.pdc.imgReplicateFeatureId:
+            return self.pdc.replicates[ int( self.features[ index, featureId ] ) ].name
+        elif featureId == self.pdc.imgWellFeatureId:
+            return self.pdc.wells[ int( self.features[ index, featureId ] ) ].name
+        elif featureId == self.pdc.imgQualityControlFeatureId:
+            return QUALITY_CONTROL_DESCR[ self.features[ index, featureId ] ]
         else:
             return self.features[ index , featureId ]
 
@@ -617,7 +641,7 @@ class ImagePixmapFactory(PixmapFactory):
 
             #del imgs[:]
             #del imgs
-    
+
             #if merged_img.mode != 'RGB':
             #    merged_img = merged_img.convert( 'RGB' )
             #merged_img.save('/home/benjamin/rgb.tif')

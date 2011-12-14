@@ -1,10 +1,19 @@
+# -*- coding: utf-8 -*-
+
+"""
+parameter_widgets.py -- Widgets providing input for parameters of parameter_utils.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys, os, random
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 from ..core.parameter_utils import *
-
-
 
 def create_widget( module, param_name, pdc=None ):
 
@@ -15,10 +24,14 @@ def create_widget( module, param_name, pdc=None ):
         widget = ParameterWidgetAny( module, param_name, pdc )
     elif param_type == PARAM_INT:
         widget = ParameterWidgetInt( module, param_name, pdc )
+    elif param_type == PARAM_BOOL:
+        widget = ParameterWidgetBool( module, param_name, pdc )
     elif param_type == PARAM_FLOAT:
         widget = ParameterWidgetFloat( module, param_name, pdc )
     elif param_type == PARAM_STR:
         widget = ParameterWidgetStr( module, param_name, pdc )
+    elif param_type == PARAM_LONGSTR:
+        widget = ParameterWidgetLongStr( module, param_name, pdc )
     elif param_type == PARAM_OBJ_FEATURE:
         widget = ParameterWidgetObjFeature( module, param_name, pdc )
     elif param_type == PARAM_IMG_FEATURE:
@@ -29,6 +42,8 @@ def create_widget( module, param_name, pdc=None ):
         widget = ParameterWidgetInts( module, param_name, pdc )
     elif param_type == PARAM_STRS:
         widget = ParameterWidgetStrs( module, param_name, pdc )
+    elif param_type == PARAM_DICT:
+        widget = ParameterWidgetBase( module, param_name, pdc )
     elif param_type == PARAM_PATH:
         widget = ParameterWidgetPath( module, param_name, pdc )
     elif param_type == PARAM_INPUT_FILE:
@@ -37,12 +52,14 @@ def create_widget( module, param_name, pdc=None ):
         widget = ParameterWidgetOutputFile( module, param_name, pdc )
     elif param_type == PARAM_TREATMENTS:
         widget = ParameterWidgetTreatments( module, param_name, pdc )
+    elif param_type == PARAM_REPLICATE_TREATMENTS:
+        widget = ParameterWidgetReplicateTreatments( module, param_name, pdc )
     elif param_type == PARAM_OBJ_FEATURES:
         widget = ParameterWidgetObjFeatures( module, param_name, pdc )
     elif param_type == PARAM_INPUT_FILES:
         widget = ParameterWidgetInputFiles( module, param_name, pdc )
     else:
-        widget = ParameterWidgetAny( module, param_name, pdc )
+        widget = ParameterWidgetBase( module, param_name, pdc )
 
     return widget
 
@@ -60,11 +77,12 @@ class ParameterWidgetBase(QWidget):
         self.param_name = param_name
         self.pdc = pdc
 
-        param_descr = get_parameter_descr( module, param_name )
-        self.param_default = param_descr[ 2 ]
-        self.param_min = param_descr[ 3 ]
-        self.param_max = param_descr[ 4 ]
-        self.optional = param_descr[ 5 ]
+        param_descr = get_parameter_descr(module, param_name)
+        self.param_default = param_descr[2]
+        self.param_min = param_descr[3]
+        self.param_max = param_descr[4]
+        self.optional = param_descr[5]
+        self.hidden = param_descr[6]
 
         if is_parameter_set( module, param_name ):
             self.value_set = True
@@ -78,6 +96,9 @@ class ParameterWidgetBase(QWidget):
         label = QLabel( '%s:' % param_descr[1] )
 
         self.widgets = [ ( label, 0 ) ]
+
+        if self.hidden:
+            self.hide()
 
     def build_widget(self):
         hbox = QHBoxLayout()
@@ -174,6 +195,32 @@ class ParameterWidgetFloat(ParameterWidgetBase):
 class ParameterWidgetStr(ParameterWidgetAny):
     pass
 
+
+class ParameterWidgetLongStr(ParameterWidgetBase):
+
+    def __init__(self, module, param_name, pdc=None):
+
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
+
+        self.textedit = QPlainTextEdit()
+        self.textedit.lineWrapMode = QPlainTextEdit.NoWrap
+        self.textedit.wordWrapMode = QPlainTextEdit.NoWrap
+        if self.param_default != None:
+            self.textedit.setPlainText( self.param_default )
+        self.connect(self.textedit, SIGNAL('textChanged()'), self.on_text_changed)
+
+        self.widgets.append( ( self.textedit, 1 ) )
+
+        self.build_widget()
+
+    def on_text_changed(self):
+        text = self.textedit.toPlainText()
+        text.replace('\t', '    ')
+        self.textedit.setPlainText(text)
+        self.update_value(text)
+
+class ParameterWidgetDict(ParameterWidgetAny):
+    pass
 
 
 class ParameterWidgetObjFeature(ParameterWidgetBase):
@@ -390,50 +437,114 @@ class ParameterWidgetTreatments(ParameterWidgetBase):
 
         ParameterWidgetBase.__init__( self, module, param_name, pdc )
 
-        scrollarea = QScrollArea()
-        self.buttongroup = QButtonGroup()
-        self.buttongroup.setExclusive( False )
-        self.buttons = []
-        vbox = QVBoxLayout()
+        self.listwidget = QListWidget()
+        self.listwidget.setSelectionMode( QAbstractItemView.MultiSelection )
 
-        self.treatments = list( self.pdc.treatmentByName.keys() )
-        self.treatments.sort()
-        #print self.pdc.treatmentByName
-        for i in xrange( len( self.treatments ) ):
-            j = self.pdc.treatmentByName[ self.treatments[ i ] ]
-            tr = self.pdc.treatments[ j ]
-            #print '%s -> %s' % ( self.treatments[ i ], tr.name )
-            self.checkBox = QCheckBox( tr.name )
-            self.checkBox.setChecked( False )
+        self.treatment_names = [tr.name for tr in pdc.treatments]
+        self.treatment_names.sort()
+        for tr_name in self.treatment_names:
+            obj = self.listwidget.addItem(tr_name)
             if self.value_set:
-                if tr.name in self.value:
-                    self.checkBox.setChecked( True )
-            vbox.addWidget( self.checkBox )
-            self.buttongroup.addButton( self.checkBox, i )
-            self.buttons.append( self.checkBox )
+                if tr_name in self.value:
+                    self.listwidget.setCurrentRow(self.listwidget.count()-1)
 
-        w = QWidget()
-        w.setLayout( vbox )
-        scrollarea.setWidget( w )
+        self.connect(self.listwidget, SIGNAL('itemSelectionChanged()'), self.on_selection_changed)
 
-        self.connect( self.buttongroup, SIGNAL('buttonClicked(int)'), self.update_value )
-
-        self.widgets.append( ( scrollarea, 1 ) )
+        self.widgets.append((self.listwidget, 1))
 
         self.build_widget()
 
-    def update_value(self, value):
+    def on_selection_changed(self):
+        self.on_configuration_changed()
+
+    def on_configuration_changed(self):
         value = []
-        for i in xrange( len( self.buttons ) ):
-            if self.buttons[ i ].isChecked():
-                value.append( self.treatments[ i ] )
-                #print 'treatment: %s' % self.treatments[ i ]
+        for item in self.listwidget.selectedItems():
+            value.append(str(item.text()))
+
+        ParameterWidgetBase.update_value(self, value)
+
+class ParameterWidgetReplicateTreatments(ParameterWidgetBase):
+
+    def __init__(self, module, param_name, pdc):
+
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
+
+        self.listwidget = QListWidget()
+        self.listwidget.setSelectionMode( QAbstractItemView.MultiSelection )
+
+        self.entry_names = []
+        self.replicateTreatmentMap = {}
+        for tr in pdc.treatments:
+            for repl in pdc.replicates:
+                name = '%s,[%d]' % (tr.name, repl.index)
+                self.entry_names.append(name)
+                self.replicateTreatmentMap[name] = [tr.name, repl.index]
+
+        #print 'value:', self.value
+        self.entry_names.sort()
+        for name in self.entry_names:
+            obj = self.listwidget.addItem(name)
+            if self.value_set:
+                #print 'name:', name
+                #print 'v:', self.replicateTreatmentMap[name]
+                if self.replicateTreatmentMap[name] in self.value:
+                    self.listwidget.setCurrentRow(self.listwidget.count()-1)
+
+        self.connect(self.listwidget, SIGNAL('itemSelectionChanged()'), self.on_selection_changed)
+
+        self.widgets.append((self.listwidget, 1))
+
+        self.build_widget()
+
+    def on_selection_changed(self):
+        self.on_configuration_changed()
+
+    def on_configuration_changed(self):
+        value = []
+        for item in self.listwidget.selectedItems():
+            value.append(self.replicateTreatmentMap[str(item.text())])
+        print 'value:', value
+
+        ParameterWidgetBase.update_value(self, value)
+
+
+class ParameterWidgetObjFeatures(ParameterWidgetBase):
+
+    def __init__(self, module, param_name, pdc):
+
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
+
+        self.listwidget = QListWidget()
+        self.listwidget.setSelectionMode( QAbstractItemView.MultiSelection )
+
+        self.featureIds = list( self.pdc.objFeatureIds.keys() )
+        self.featureIds.sort()
+        for i in xrange( len( self.featureIds ) ):
+            k = self.featureIds[ i ]
+            obj = self.listwidget.addItem( k )
+            if self.value_set:
+                if k in self.value:
+                    self.listwidget.setCurrentRow(self.listwidget.count()-1)
+
+        self.connect( self.listwidget, SIGNAL('itemSelectionChanged()'), self.on_selection_changed )
+
+        self.widgets.append( ( self.listwidget, 1 ) )
+
+        self.build_widget()
+
+    def on_selection_changed(self):
+        self.on_configuration_changed()
+
+    def on_configuration_changed(self):
+        value = []
+        for item in self.listwidget.selectedItems():
+            value.append( str( item.text() ) )
 
         ParameterWidgetBase.update_value( self, value )
 
 
-
-class ParameterWidgetObjFeatures(ParameterWidgetBase):
+class ParameterWidgetObjFeatures2(ParameterWidgetBase):
 
     def __init__(self, module, param_name, pdc):
 
@@ -475,3 +586,27 @@ class ParameterWidgetObjFeatures(ParameterWidgetBase):
                 value.append( self.featureIds[ i ] )
 
         ParameterWidgetBase.update_value( self, value )
+
+class ParameterWidgetBool(ParameterWidgetBase):
+
+    def __init__(self, module, param_name, pdc):
+        ParameterWidgetBase.__init__( self, module, param_name, pdc )
+        self.checkBox = QCheckBox()
+        vbox = QVBoxLayout()
+        vbox.addWidget(self.checkBox)
+
+        if self.value_set:
+            if type(self.value) == str:
+                self.checkBox.setChecked(self.value.lower() == 'true')
+            else:
+                self.checkBox.setChecked(self.value)
+
+        self.connect(self.checkBox, SIGNAL('stateChanged(int)'), self.update_value)
+
+        self.widgets.append((self.checkBox,1))
+
+        self.build_widget()
+
+    def update_value(self, value):
+        value = bool(value)
+        ParameterWidgetBase.update_value(self, value)

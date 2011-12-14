@@ -1,12 +1,20 @@
+# -*- coding: utf-8 -*-
+
+"""
+cluster_description_widgets.py -- Configuration widget for clusters.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-
 
 from ..core import parameter_utils as utils
 
 from parameter_widgets import ParameterWidgetObjFeatures
-
-
 
 
 class ClusterConfigurationWidget(QWidget):
@@ -71,7 +79,6 @@ class ClusterConfigurationWidget(QWidget):
             value.append( str( item.text() ) )
 
         self.emit( SIGNAL('configurationChanged'), self.id, self.name, value )
-
 
 
 class ClusterConfigurationTab(QWidget):

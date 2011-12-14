@@ -1,0 +1,30 @@
+#BOOST = '/opt/local'
+#BOOSTLIBPATH = BOOST+'/lib'
+#BOOSTINCPATH = BOOST+'/include'
+NUMPYINCPATH = None
+#NUMPYINCPATH = '/opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/numpy/core/include'
+
+import os
+env = Environment(ENV={'PATH' : os.environ['PATH']}, CPPPATH=[NUMPYINCPATH])
+
+import subprocess
+py_config = subprocess.Popen(["python-config","--cflags","--libs","--ldflags"], stdout=subprocess.PIPE).communicate()[0]
+py_config_list = py_config.split()
+for i,s in enumerate(py_config_list):
+    if s == '-u':
+        del py_config_list[i+2]
+        del py_config_list[i+1]
+        del py_config_list[i]
+py_config = " ".join(py_config_list)
+
+d = env.ParseFlags(py_config)
+env.MergeFlags(d)
+
+env.Append(CCFLAGS=['-fopenmp'])
+env.Append(LIBS=['gomp'])
+
+#BOOST_PYTHON_LIB='boost_python'
+#PYTHON_LIB='python2.7'
+
+env.SharedLibrary(target='ccluster.so', source='ccluster_ext.c', SHLIBPREFIX='')
+

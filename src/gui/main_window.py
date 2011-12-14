@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+
+"""
+main_window.py -- GUI main window.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys, os, random
 import numpy
 from PyQt4.QtCore import *
@@ -14,6 +25,7 @@ import parameter_widgets
 
 from ..core import pipeline
 from ..core import importer
+from ..core import analyse
 
 from ..core import parameter_utils as utils
 
@@ -50,10 +62,6 @@ class MainWindow(QMainWindow):
 
         self.results_window = None
 
-        self.build_menu()
-        self.build_main_frame()
-        self.build_status_bar()
-
         self.image_viewer = None
         self.results_window = None
 
@@ -61,6 +69,11 @@ class MainWindow(QMainWindow):
         self.clusterConfigurationTab = None
 
         self.__pipeline_running = False
+        self.pl = None
+
+        self.build_menu()
+        self.build_main_frame()
+        self.build_status_bar()
 
         """self.channelDescription = {}
         self.channelDescription['R'] = 'Nucleus staining (A568)'
@@ -122,6 +135,13 @@ class MainWindow(QMainWindow):
         utils.save_module_configuration( path )
         self.statusBar().showMessage( 'Project file saved' )
 
+    def load_configuration_file(self, path):
+        self.statusBar().showMessage( 'Loading configuration file...' )
+        utils.load_module_configuration(path)
+        self.reset_module_tab_widget(self.tab_widget)
+        self.update_module_tab_widget(self.tab_widget)
+        self.statusBar().showMessage('Configuration file loaded')
+
     def on_open_project(self):
         if self.project_saved():
             file_choices = "Project file (*.phn *.yaml);;All files (*)"
@@ -133,6 +153,20 @@ class MainWindow(QMainWindow):
                 self.on_new_project()
                 self.load_project_file( path )
                 self.statusBar().showMessage( 'Opened %s' % path )
+                return True
+
+            return False
+
+    def on_open_configuration(self):
+        if self.project_saved():
+            file_choices = "Configuration file (*.yaml);;All files (*)"
+
+            path = unicode(QFileDialog.getOpenFileName(self,
+                            'Open file', '',
+                            file_choices))
+            if path:
+                self.load_configuration_file(path)
+                self.statusBar().showMessage( 'Opened configuration file %s' % path )
                 return True
 
             return False
@@ -198,7 +232,9 @@ class MainWindow(QMainWindow):
 
             if self.__pipeline_running:
 
+                self.start_cancel_button.setText( 'Perform cell selection' )
                 self.pl.stop()
+                self.__pipeline_running = False
 
             else:
 
@@ -213,8 +249,8 @@ class MainWindow(QMainWindow):
                     clusterConfiguration = self.clusterConfigurationTab.clusterConfiguration
     
                     self.pl = pipeline.Pipeline( pdc, clusterConfiguration )
-                    self.pl.connect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
-                    self.pl.connect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
+                    self.pl.connect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
+                    self.pl.connect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
                     self.__pipeline_running = True
                     self.__quality_control_done = False
                     self.pl.start_quality_control()
@@ -231,7 +267,12 @@ class MainWindow(QMainWindow):
 
     def on_pipeline_finished(self):
 
-        if self.pl.get_result():
+        try:
+            pl_result = self.pl.get_result()
+        except Exception, e:
+            pl_result = False
+
+        if pl_result:
 
             if self.__quality_control_done:
 
@@ -239,19 +280,21 @@ class MainWindow(QMainWindow):
                 print 'creating results window...'
                 channelMapping = self.channelDescriptionTab.channelMapping
                 channelDescription = self.channelDescriptionTab.channelDescription
+                if self.results_window:
+                    self.results_window.close()
                 self.results_window = ResultsWindow( self.pl, channelMapping, channelDescription, self.__simple_ui )
                 self.results_window.show()
-        
+
                 self.progress_bar.setFormat( 'Idling...' )
         
                 self.start_cancel_button.setText( 'Perform cell selection' )
 
                 self.__pipeline_running = False
 
-                self.pl.disconnect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
-                self.pl.disconnect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
+                self.pl.disconnect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
+                self.pl.disconnect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
 
-                del self.pl
+                #del self.pl
 
             else:
 
@@ -268,10 +311,10 @@ class MainWindow(QMainWindow):
 
             self.__pipeline_running = False
 
-            self.pl.disconnect( self.pl, SIGNAL('updateProgress'), self.on_update_progress )
-            self.pl.disconnect( self.pl, SIGNAL('finished()'), self.on_pipeline_finished )
+            self.pl.disconnect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
+            self.pl.disconnect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
 
-            del self.pl
+            #del self.pl
 
 
     def on_parameter_changed(self, module, param_name):
@@ -377,25 +420,23 @@ class MainWindow(QMainWindow):
                     tab_widget.addTab( scrollarea, utils.get_module_descr( module ) )
 
         if self.importer.get_pdc() != None:
-
             if self.channelDescriptionTab == None:
-                self.channelDescriptionTab = ChannelDescriptionTab(
-                    self.importer.get_pdc()
-                )
-                tab_widget.addTab( self.channelDescriptionTab, 'Channels' )
-
+                self.channelDescriptionTab = ChannelDescriptionTab(self.importer.get_pdc())
             if self.clusterConfigurationTab == None:
-                self.clusterConfigurationTab = ClusterConfigurationTab(
-                    self.importer.get_pdc()
-                )
-                tab_widget.addTab( self.clusterConfigurationTab, 'Clustering configuration' )
+                self.clusterConfigurationTab = ClusterConfigurationTab(self.importer.get_pdc())
 
+        if self.channelDescriptionTab != None:
+            tab_widget.addTab(self.channelDescriptionTab, 'Channels')
+        if self.clusterConfigurationTab != None:
+            tab_widget.addTab(self.clusterConfigurationTab, 'Clustering configuration')
 
     def on_view_images(self):
         channelMapping = self.channelDescriptionTab.channelMapping
         channelDescription = self.channelDescriptionTab.channelDescription
         pdc = self.importer.get_pdc()
-        self.image_viewer = GalleryWindow( pdc.imgFeatureIds, channelMapping, channelDescription, True )
+        if self.pl == None:
+            self.pl = pipeline.Pipeline(pdc, self.clusterConfigurationTab.clusterConfiguration)
+        self.image_viewer = GalleryWindow( self.pl, pdc.imgFeatureIds, channelMapping, channelDescription, True )
         selectionIds = numpy.arange( len( pdc.images ) )
         pixmapFactory = ImagePixmapFactory( pdc, channelMapping )
         featureFactory = ImageFeatureTextFactory( pdc )
@@ -453,11 +494,15 @@ class MainWindow(QMainWindow):
         save_project_action = self.make_action("&Save project",
             shortcut="Ctrl+S", slot=self.on_save_project, 
             tip="Save the current project to a file")
+        open_configuration_action = self.make_action("Open &configuration file",
+            shortcut="Ctrl+C", slot=self.on_open_configuration,
+            tip="Open a configuration file overriding or extending the current project configuration")
         quit_action = self.make_action("&Quit", slot=self.on_close, 
             shortcut="Ctrl+Q", tip="Close the application")
 
         self.add_actions( self.project_menu, 
-            ( new_project_action, open_project_action, save_project_action, None, quit_action )
+            ( new_project_action, open_project_action, save_project_action, None,
+              open_configuration_action, None, quit_action )
         )
         
         self.help_menu = self.menuBar().addMenu("&Help")

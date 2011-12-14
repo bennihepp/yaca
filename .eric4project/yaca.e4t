@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Tasks SYSTEM "Tasks-4.2.dtd">
 <!-- eric4 tasks file for project yaca -->
-<!-- Saved: 2011-03-18, 15:26:08 -->
+<!-- Saved: 2011-08-10, 15:24:05 -->
 <Tasks version="4.2">
   <Task priority="1" completed="False" bugfix="False">
     <Summary>TODO: this is very dirty</Summary>
     <Description></Description>
-    <Created>2011-03-17, 16:37:05</Created>
+    <Created>2011-07-25, 13:53:10</Created>
     <Resource>
       <Filename>src/gui/gallery_window.py</Filename>
-      <Linenumber>636</Linenumber>
+      <Linenumber>663</Linenumber>
     </Resource>
   </Task>
 </Tasks>

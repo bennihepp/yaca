@@ -1,4 +1,16 @@
+# -*- coding: utf-8 -*-
+
+"""
+import_cp2_csv.py -- Importer for CellProfiler 2.0 CSV files.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import csv
+import re
 import numpy
 import sys
 import os
@@ -6,10 +18,9 @@ import traceback
 
 from data_container import *
 
-
+WELL_ID_CP2_FEATURE_NAME = 'Metadata_WELL_ID'
 TREATMENT_ID_CP2_FEATURE_NAME = 'Metadata_TREATMENT_ID'
 REPLICATE_ID_CP2_FEATURE_NAME = 'Metadata_REPLICATE_ID'
-
 
 OBJECT_IMAGE_ID_IDENTIFIER = 'ImageNumber'
 def default_image_id_extractor( row, column_names ):
@@ -56,6 +67,20 @@ def default_object_position_extractor( row, column_names ):
     if xi < 0 or yi < 0:
         raise Exception( 'Unable to extract object position' )
     return float(row[xi]),float(row[yi])
+
+WELL_FEATURE_IDENTIFIER = 'Metadata_ImageFileName'
+WELL_FEATURE_IDENTIFIER_PATTERN = re.compile( 'W(\d*)--' )
+def default_well_extractor( row, column_names ):
+    well_name = None
+    for i in xrange( len( column_names ) ):
+        name = column_names[i]
+        if name == WELL_FEATURE_IDENTIFIER:
+            match = WELL_FEATURE_IDENTIFIER_PATTERN.search( row[ i ] )
+            well_name = match.group( 1 )
+            break
+    if well_name == None:
+        raise Exception( 'Unable to extract well identifier' )
+    return well_name
 
 TREATMENT_FEATURE_IDENTIFIER = 'Metadata_RelativeImagePath'
 def default_treatment_extractor( row, column_names ):
@@ -109,6 +134,10 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         if ict[i] == float:
             n = len( pdc.imgFeatureIds )
             pdc.imgFeatureIds[ icn[i] ] = n
+        else:
+            if not 'imgPropertyNames' in working_dict:
+                working_dict[ 'imgPropertyNames' ] = []
+            working_dict[ 'imgPropertyNames' ].append( icn[i] )
 
 
     object_column_types = []
@@ -136,23 +165,73 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         working_dict[ 'img_image_id_feature_is_virtual' ] = True
     pdc.imgImageFeatureId = pdc.imgFeatureIds[ IMAGE_ID_FEATURE_NAME ]
 
+    if pdc.imgFeatureIds.has_key( QUALITY_CONTROL_FEATURE_NAME ):
+        pdc.imgQualityControlFeatureId = -1
+    else:
+        print 'creating quality control feature for image'
+        pdc.imgFeatureIds[ QUALITY_CONTROL_FEATURE_NAME ] = len( pdc.imgFeatureIds )
+        pdc.imgQualityControlFeatureId = pdc.imgFeatureIds[ QUALITY_CONTROL_FEATURE_NAME ]
+
+    if pdc.objFeatureIds.has_key( QUALITY_CONTROL_FEATURE_NAME ):
+        pdc.objQualityControlFeatureId = -1
+    else:
+        print 'creating quality control feature for image'
+        pdc.objFeatureIds[ QUALITY_CONTROL_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        pdc.objQualityControlFeatureId = pdc.objFeatureIds[ QUALITY_CONTROL_FEATURE_NAME ]
+
+    # check if we have to provide a virtual wellId-feature for the images
+    working_dict[ 'img_well_id_feature_is_virtual' ] = False
+    if pdc.imgFeatureIds.has_key( WELL_ID_FEATURE_NAME ):
+        pdc.imgWellFeatureId = pdc.imgFeatureIds[ WELL_ID_FEATURE_NAME ]
+    elif pdc.imgFeatureIds.has_key( WELL_ID_CP2_FEATURE_NAME ):
+        pdc.imgWellFeatureId = pdc.imgFeatureIds[ WELL_ID_CP2_FEATURE_NAME ]
+    else:
+        print 'creating well feature for image'
+        pdc.imgFeatureIds[ WELL_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
+        working_dict[ 'img_well_id_feature_is_virtual' ] = True
+        pdc.imgWellFeatureId = pdc.imgFeatureIds[ WELL_ID_FEATURE_NAME ]
+        if WELL_ID_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_well_id_property_name' ] = WELL_ID_FEATURE_NAME
+        elif WELL_ID_CP2_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_well_id_property_name' ] = WELL_ID_CP2_FEATURE_NAME
+        else:
+            working_dict[ 'img_well_id_property_name' ] = None
+
     # check if we have to provide a virtual treatmentId-feature for the images
     working_dict[ 'img_treatment_id_feature_is_virtual' ] = False
-    if  ( not pdc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ) ) \
-    and ( not pdc.imgFeatureIds.has_key( TREATMENT_ID_CP2_FEATURE_NAME ) ):
+    if  pdc.imgFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ):
+        pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+    elif pdc.imgFeatureIds.has_key( TREATMENT_ID_CP2_FEATURE_NAME ):
+        pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_CP2_FEATURE_NAME ]
+    else:
         print 'creating treatment feature for image'
         pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
         working_dict[ 'img_treatment_id_feature_is_virtual' ] = True
-    pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+        pdc.imgTreatmentFeatureId = pdc.imgFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+        if TREATMENT_ID_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_treatment_id_property_name' ] = TREATMENT_ID_FEATURE_NAME
+        elif TREATMENT_ID_CP2_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_treatment_id_property_name' ] = TREATMENT_ID_CP2_FEATURE_NAME
+        else:
+            working_dict[ 'img_treatment_id_property_name' ] = None
 
     # check if we have to provide a virtual replicateId-feature for the images
     working_dict[ 'img_replicate_id_feature_is_virtual' ] = False
-    if  ( not pdc.imgFeatureIds.has_key( REPLICATE_ID_FEATURE_NAME ) ) \
-    and ( not pdc.imgFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ) ):
+    if pdc.imgFeatureIds.has_key( REPLICATE_ID_FEATURE_NAME ):
+        pdc.imgReplicateFeatureId = pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+    elif pdc.imgFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ):
+        pdc.imgReplicateFeatureId = pdc.imgFeatureIds[ REPLICATE_ID_CP2_FEATURE_NAME ]
+    else:
         print 'creating replicate feature for image'
         pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ] = len( pdc.imgFeatureIds )
         working_dict[ 'img_replicate_id_feature_is_virtual' ] = True
-    pdc.imgReplicateFeatureId = pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+        pdc.imgReplicateFeatureId = pdc.imgFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+        if REPLICATE_ID_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_replicate_id_property_name' ] = REPLICATE_ID_FEATURE_NAME
+        elif REPLICATE_ID_CP2_FEATURE_NAME in working_dict[ 'imgPropertyNames' ]:
+            working_dict[ 'img_replicate_id_property_name' ] = REPLICATE_ID_CP2_FEATURE_NAME
+        else:
+            working_dict[ 'img_replicate_id_property_name' ] = None
 
     # check if we have to provide a virtual objectId-feature for the objects
     working_dict[ 'obj_object_id_feature_is_virtual' ] = False
@@ -168,6 +247,19 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         working_dict[ 'obj_image_id_feature_is_virtual' ] = True
     pdc.objImageFeatureId = pdc.objFeatureIds[ IMAGE_ID_FEATURE_NAME ]
 
+    # check if we have to provide a virtual wellId-feature for the objects
+    working_dict[ 'obj_well_id_feature_is_virtual' ] = False
+    if  ( not pdc.objFeatureIds.has_key( WELL_ID_FEATURE_NAME ) ) \
+    and ( not pdc.objFeatureIds.has_key( WELL_ID_CP2_FEATURE_NAME ) ):
+        print 'creating well feature for objects'
+        pdc.objFeatureIds[ WELL_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
+        working_dict[ 'obj_well_id_feature_is_virtual' ] = True
+        pdc.objWellFeatureId = pdc.objFeatureIds[ WELL_ID_FEATURE_NAME ]
+    elif pdc.objFeatureIds.has_key( WELL_ID_CP2_FEATURE_NAME ):
+        pdc.objWellFeatureId = pdc.objFeatureIds[ WELL_ID_CP2_FEATURE_NAME ]
+    else:
+        pdc.objWellFeatureId = pdc.objFeatureIds[ WELL_ID_FEATURE_NAME ]
+
     # check if we have to provide a virtual treatmentId-feature for the objects
     working_dict[ 'obj_treatment_id_feature_is_virtual' ] = False
     if  ( not pdc.objFeatureIds.has_key( TREATMENT_ID_FEATURE_NAME ) ) \
@@ -175,16 +267,23 @@ def init_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         print 'creating treatment feature for objects'
         pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
         working_dict[ 'obj_treatment_id_feature_is_virtual' ] = True
-    pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+        pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
+    elif pdc.objFeatureIds.has_key( TREATMENT_ID_CP2_FEATURE_NAME ):
+        pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_CP2_FEATURE_NAME ]
+    else:
+        pdc.objTreatmentFeatureId = pdc.objFeatureIds[ TREATMENT_ID_FEATURE_NAME ]
 
     # check if we have to provide a virtual replicateId-feature for the objects
     working_dict[ 'obj_replicate_id_feature_is_virtual' ] = False
     if  ( not pdc.objFeatureIds.has_key( REPLICATE_ID_FEATURE_NAME ) ) \
     and ( not pdc.objFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ) ):
-        print 'creating replicate feature for objects'
         pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ] = len( pdc.objFeatureIds )
         working_dict[ 'obj_replicate_id_feature_is_virtual' ] = True
-    pdc.objReplicateFeatureId = pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+        pdc.objReplicateFeatureId = pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
+    elif pdc.objFeatureIds.has_key( REPLICATE_ID_CP2_FEATURE_NAME ):
+        pdc.objReplicateFeatureId = pdc.objFeatureIds[ REPLICATE_ID_CP2_FEATURE_NAME ]
+    else:
+        pdc.objReplicateFeatureId = pdc.objFeatureIds[ REPLICATE_ID_FEATURE_NAME ]
 
 
 
@@ -217,8 +316,30 @@ def update_pdc(pdc, image_data, object_data):
 
 
 
+def correct_image_data(image_data):
+    special_column_names = [ TREATMENT_ID_FEATURE_NAME, TREATMENT_ID_CP2_FEATURE_NAME, REPLICATE_ID_FEATURE_NAME, REPLICATE_ID_CP2_FEATURE_NAME, WELL_ID_FEATURE_NAME, WELL_ID_CP2_FEATURE_NAME ]
+
+    img,icn,ict = image_data
+    for i in xrange( len( ict ) ):
+        if ict[i] == float and icn[i] in special_column_names:
+            ict[i] = str
+
+def correct_object_data(object_data):
+    special_column_names = [ TREATMENT_ID_FEATURE_NAME, TREATMENT_ID_CP2_FEATURE_NAME, REPLICATE_ID_FEATURE_NAME, REPLICATE_ID_CP2_FEATURE_NAME, WELL_ID_FEATURE_NAME, WELL_ID_CP2_FEATURE_NAME ]
+
+    for k in xrange( len( object_data ) ):
+
+        o,ocn,oct = object_data[ k ]
+        for i in xrange( len(oct) ):
+            if oct[i] == float and ocn[i] in special_column_names:
+                oct[i] = str
+
 def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes,
-             image_id_extractor, image_files_extractor, object_position_extractor, treatment_extractor, replicate_extractor):
+             image_id_extractor, image_files_extractor, object_position_extractor,
+             well_extractor, treatment_extractor, replicate_extractor):
+
+    correct_image_data( image_data )
+    correct_object_data( object_data )
 
     if len( pdc.images ) <= 0:
         init_pdc( pdc, working_dict, image_data, object_data, image_file_postfix, object_file_postfixes )
@@ -240,7 +361,7 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
     for i in xrange( len( images ) ):
 
         img = yaca_data_image()
-        img.rowId = len( pdc.images )
+        img.index = len( pdc.images )
 
         try:
             img.imageFiles = image_files_extractor( images[i], image_column_names )
@@ -257,24 +378,56 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
             else:
                 v1 = images[i]
                 v2 = float( v1[j] )
-                q = pdc.imgFeatures[img.rowId]
-                pdc.imgFeatures[img.rowId][n] = v2
-                #pdc.imgFeatures[img.rowId][n] = float( images[i][j] )
+                q = pdc.imgFeatures[img.index]
+                pdc.imgFeatures[img.index][n] = v2
+                #pdc.imgFeatures[img.index][n] = float( images[i][j] )
                 n += 1
 
         try:
 
-            if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
-                treatment_name = treatment_extractor( images[i], image_column_names )
+            if working_dict[ 'img_well_id_feature_is_virtual' ]:
+                if working_dict[ 'img_well_id_property_name' ]:
+                    well_name = img.properties[ working_dict[ 'img_well_id_property_name' ] ]
+                else:
+                    well_name = well_extractor( images[i], image_column_names )
             else:
-                treatment_name = str( pdc.imgFeatures[ img.rowId, pdc.imgTreatmentFeatureId ] )
+                well_name = str( pdc.imgFeatures[ img.index, pdc.imgWellFeatureId ] )
+
+            if not pdc.wellByName.has_key(well_name):
+                well = yaca_data_well( well_name )
+                well.index = len( pdc.wells )
+                pdc.wellByName[well_name] = len( pdc.wells )
+                pdc.wells.append( well )
+                img.well = well
+                #print 'creating well %d: %s' % ( well.index, well.name )
+            else:
+                img.well = pdc.wells[ pdc.wellByName[ well_name ] ]
+                #print 'using well %d: %s' % ( img.well.index, img.well.name )
+
+        except Exception,e:
+            img.import_state = 'no_well'
+            tb = "".join( traceback.format_tb( sys.exc_info()[2] ) )
+            pdc.errors.append( yaca_data_error( e, tb, img ) )
+            raise
+
+        try:
+
+            if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
+                if working_dict[ 'img_treatment_id_property_name' ]:
+                    treatment_name = img.properties[ working_dict[ 'img_treatment_id_property_name' ] ]
+                else:
+                    treatment_name = treatment_extractor( images[i], image_column_names )
+            else:
+                treatment_name = str( pdc.imgFeatures[ img.index, pdc.imgTreatmentFeatureId ] )
 
             if not pdc.treatmentByName.has_key(treatment_name):
+                #print 'creating treatment with name %s' % treatment_name
                 treatment = yaca_data_treatment( treatment_name )
-                treatment.rowId = len( pdc.treatments )
+                treatment.index = len( pdc.treatments )
                 pdc.treatmentByName[treatment_name] = len( pdc.treatments )
                 pdc.treatments.append( treatment )
                 img.treatment = treatment
+                #print 'creating treatment %d: %s' % ( treatment.index, treatment.name )
             else:
                 img.treatment = pdc.treatments[ pdc.treatmentByName[ treatment_name ] ]
 
@@ -287,16 +440,20 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
         try:
 
             if working_dict[ 'img_replicate_id_feature_is_virtual' ]:
-                replicate_name = replicate_extractor( images[i], image_column_names )
+                if working_dict[ 'img_replicate_id_property_name' ]:
+                    replicate_name = img.properties[ working_dict[ 'img_replicate_id_property_name' ] ]
+                else:
+                    replicate_name = replicate_extractor( images[i], image_column_names )
             else:
-                replicate_name = str( pdc.imgFeatures[ img.rowId, pdc.imgReplicateFeatureId ] )
+                replicate_name = str( pdc.imgFeatures[ img.index, pdc.imgReplicateFeatureId ] )
 
             if not pdc.replicateByName.has_key(replicate_name):
                 replicate = yaca_data_replicate( replicate_name )
-                replicate.rowId = len( pdc.replicates )
+                replicate.index = len( pdc.replicates )
                 pdc.replicateByName[replicate_name] = len( pdc.replicates )
                 pdc.replicates.append( replicate )
                 img.replicate = replicate
+                #print 'creating replicate %d: %s' % ( replicate.index, replicate.name )
             else:
                 img.replicate = pdc.replicates[ pdc.replicateByName[ replicate_name ] ]
 
@@ -308,20 +465,23 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
 
 
         if working_dict[ 'img_image_id_feature_is_virtual' ]:
-            pdc.imgFeatures[img.rowId][ pdc.imgImageFeatureId ] = img.rowId
+            pdc.imgFeatures[img.index][ pdc.imgImageFeatureId ] = img.index
+
+        if working_dict[ 'img_well_id_feature_is_virtual' ]:
+            pdc.imgFeatures[img.index][ pdc.imgWellFeatureId ] = img.well.index
 
         if working_dict[ 'img_treatment_id_feature_is_virtual' ]:
-            pdc.imgFeatures[img.rowId][ pdc.imgTreatmentFeatureId ] = img.treatment.rowId
+            pdc.imgFeatures[img.index][ pdc.imgTreatmentFeatureId ] = img.treatment.index
 
         if working_dict[ 'img_replicate_id_feature_is_virtual' ]:
-            pdc.imgFeatures[img.rowId][ pdc.imgReplicateFeatureId ] = img.replicate.rowId
+            pdc.imgFeatures[img.index][ pdc.imgReplicateFeatureId ] = img.replicate.index
 
         pdc.images.append(img)
 
     for i in xrange( len(o0) ):
 
         obj = yaca_data_object()
-        obj.rowId = len( pdc.objects )
+        obj.index = len( pdc.objects )
 
         found_img_id = False
         found_obj_position = False
@@ -332,7 +492,10 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
             o,ocn,oct = object_data[k]
 
             try:
-                image_id = image_id_extractor( o[i], ocn ) + old_num_of_images
+                #TODO: It seems that the CellProfiler output changed with revision 11429
+                #image_id = image_id_extrac tor( o[i], ocn ) + old_num_of_images
+                # assume a single image per tuple of input files
+                image_id = -1
                 obj.image = pdc.images[ image_id ]
                 found_img_id = True
             except:
@@ -346,7 +509,7 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
 
             for j in xrange( len( oct ) ):
                 if object_column_types[ k ][ j ] == float:
-                    pdc.objFeatures[obj.rowId][n] = float( o[i][j] )
+                    pdc.objFeatures[obj.index][n] = float( o[i][j] )
                     n += 1
                 #else:
                 #    obj.properties[ ocn[j] ] = o[i][j]
@@ -366,16 +529,19 @@ def fill_pdc(pdc, working_dict, image_data, object_data, image_file_postfix, obj
 
 
         if working_dict[ 'obj_object_id_feature_is_virtual' ]:
-            pdc.objFeatures[ obj.rowId , pdc.objObjectFeatureId ] = obj.rowId
+            pdc.objFeatures[ obj.index , pdc.objObjectFeatureId ] = obj.index
 
         if working_dict[ 'obj_image_id_feature_is_virtual' ]:
-            pdc.objFeatures[ obj.rowId , pdc.objImageFeatureId ] = obj.image.rowId
+            pdc.objFeatures[ obj.index , pdc.objImageFeatureId ] = obj.image.index
+
+        if working_dict[ 'obj_well_id_feature_is_virtual' ]:
+            pdc.objFeatures[ obj.index , pdc.objWellFeatureId ] = obj.image.well.index
 
         if working_dict[ 'obj_treatment_id_feature_is_virtual' ]:
-            pdc.objFeatures[ obj.rowId , pdc.objTreatmentFeatureId ] = obj.image.treatment.rowId
+            pdc.objFeatures[ obj.index , pdc.objTreatmentFeatureId ] = obj.image.treatment.index
 
         if working_dict[ 'obj_replicate_id_feature_is_virtual' ]:
-            pdc.objFeatures[ obj.rowId , pdc.objReplicateFeatureId ] = obj.image.replicate.rowId
+            pdc.objFeatures[ obj.index , pdc.objReplicateFeatureId ] = obj.image.replicate.index
 
         pdc.objects.append(obj)
 
@@ -386,6 +552,7 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                      image_id_extractor=default_image_id_extractor,
                                      image_files_extractor=default_image_files_extractor,
                                      object_position_extractor=default_object_position_extractor,
+                                     well_extractor=default_well_extractor,
                                      treatment_extractor=default_treatment_extractor,
                                      replicate_extractor=default_replicate_extractor):
 
@@ -411,6 +578,7 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                               image_id_extractor,
                                               image_files_extractor,
                                               object_position_extractor,
+                                              well_extractor,
                                               treatment_extractor,
                                               replicate_extractor
             )
@@ -458,6 +626,7 @@ def import_cp2_csv_results_recursive(path, pdc, working_dict, image_file_postfix
                                 image_id_extractor,
                                 image_files_extractor,
                                 object_position_extractor,
+                                well_extractor,
                                 treatment_extractor,
                                 replicate_extractor
                         )
@@ -481,6 +650,7 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
                            image_id_extractor=default_image_id_extractor,
                            image_files_extractor=default_image_files_extractor,
                            object_position_extractor=default_object_position_extractor,
+                           well_extractor=default_well_extractor,
                            treatment_extractor=default_treatment_extractor,
                            replicate_extractor=default_replicate_extractor):
 
@@ -499,6 +669,7 @@ def import_cp2_csv_results(path, image_file_postfix, object_file_postfixes,
                                                                      image_id_extractor,
                                                                      image_files_extractor,
                                                                      object_position_extractor,
+                                                                     well_extractor,
                                                                      treatment_extractor,
                                                                      replicate_extractor )
 

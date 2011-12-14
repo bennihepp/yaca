@@ -1,24 +1,39 @@
-""" This module contains the Pipeline class. This class defines the whole computational workflow
-    of the application.
-    The command-line interface or the graphical user-interface only need to know about this class.
-    All the steps like quality-control, pre-filtering and clustering are represented
-    as methods in the Pipeline class."""
+# -*- coding: utf-8 -*-
+
+"""
+pipeline.py -- Computational pipeline.
+
+This module contains the Pipeline class. This class defines the whole
+computational workflow of the application.
+The command-line interface or the graphical user-interface only need to know
+about this class. All the steps like quality-control, pre-filtering and
+clustering are represented as methods in the Pipeline class.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
 
 import sys
 import os
-
-import numpy
-
-import analyse, distance, quality_control, cluster
-
-
-from thread_utils import Thread
+import time
 
 from thread_utils import Thread,SIGNAL
 
+import numpy
+
+try:
+    import hcluster
+    has_hcluster = True
+except:
+    has_hcluster = False
+
+import analyse, distance, quality_control, cluster, cluster_profiles, grouping
 
 
-# define necessary parameters for this module (see parameter_utils.py for details)
+# define necessary parameters for this module
+# (see parameter_utils.py for details)
 #
 import parameter_utils as utils
 #
@@ -28,6 +43,8 @@ utils.register_module( __name__, 'Image analysis pipeline', __dict__ )
 #
 import importer
 utils.add_required_state( __name__, importer.__name__, 'imported' )
+#
+utils.register_parameter( __name__, 'PCA_components', utils.PARAM_INT, 'Number of PCAs to extract', 3, 1, 100 )
 #
 utils.register_parameter( __name__, 'number_of_clusters', utils.PARAM_INT, 'Number of clusters (Default is number of treatment)', None, 1, None, True )
 #
@@ -48,7 +65,6 @@ utils.register_parameter( __name__, 'merge_cluster_factor', utils.PARAM_FLOAT, '
 utils.register_parameter( __name__, 'merge_cluster_offset', utils.PARAM_FLOAT, 'Offset for the minimum distance when merging clusters', 0.0, -100.0, 100.0 )
 #
 utils.register_parameter( __name__, 'reject_treatments', utils.PARAM_TREATMENTS, 'Treatments not to be used for clustering' )
-
 
 
 class Pipeline(Thread):
@@ -78,12 +94,12 @@ class Pipeline(Thread):
         'nonControlFeatures',
         'nonControlMahalDist',
         'nonControlClusterFeatures',
-        'nonControlClusters',
-        'nonControlPartition',
+        'clusters',
+        'partition',
         'nonControlSilhouette',
         'nonControlWeights',
-        'nonControlIntraClusterDistances',
-        'nonControlInterClusterDistances',
+        'intraClusterDistances',
+        'interClusterDistances',
         'nonControlFeatureIds',
         'nonControlFeatureNames',
         'nonControlClusterProfiles',
@@ -107,6 +123,9 @@ class Pipeline(Thread):
         self.pdc = pdc
         self.clusterConfiguration = clusterConfiguration
 
+        #TODO
+        self.pca = None
+
         # initialize some public members
         # the mask of images and cells that passed quality control
         self.validImageMask = None
@@ -114,19 +133,20 @@ class Pipeline(Thread):
         # the mask of control-like and not-control-like cells (that passed quality control)
         self.controlCellMask = None
         self.nonControlCellMask = None
+        #self.clusterCellMask = None
         # ?? TODO ??
-        self.featureIds = None
-        self.featureNames = None
+        #self.featureIds = None
+        #self.featureNames = None
         # the features of the not-control-like cells
-        self.nonControlFeatures = None
+        #self.nonControlFeatures = None
         # the features of the not-control-like cells used for clustering
-        self.nonControlClusterFeatures = None
+        #self.nonControlClusterFeatures = None
         # the clusters of the non-control-like cells that were found
-        self.nonControlClusters = None
+        self.clusters = None
         # the partition of the non-control-like cells that was found
-        self.nonControlPartition = None
+        self.partition = None
         # ?? TODO ?? the silhouette of the non-control-like cells that was found
-        self.nonControlSilhouette = None
+        #self.nonControlSilhouette = None
         #
         self.validTreatments = None
         self.validTreatmentIds = None
@@ -216,11 +236,17 @@ class Pipeline(Thread):
 
             clusterContainer = dict[ 'clusterContainer' ]
 
+            print 'keys:'
+            print '\n'.join( clusterContainer.keys() )
+
             clusters = clusterContainer[ 'clusters' ]    
             featureNames = clusterContainer[ 'featureNames' ]
             Z = clusterContainer[ 'Z' ]
             tree = Z
             method = clusterContainer[ 'method' ]
+            dump_cluster_index = -1
+            if 'dump_cluster_index' in clusterContainer:
+                dump_cluster_index = clusterContainer[ 'dump_cluster_index' ]
 
             # determine the IDs of the features to be used
             featureIds = []
@@ -232,7 +258,19 @@ class Pipeline(Thread):
             # extract the features for the clustering
             features = self.pdc.objFeatures[ self.nonControlCellMask ][ : , featureIds ]
     
-            norm_features, valid_mask = self.__compute_normalized_features( featureNames )
+            norm_features, valid_feature_mask, newFeatureIds = self.__compute_normalized_features( self.nonControlCellMask, featureNames, self.get_control_treatment_cell_mask() )
+            newFeatureIds = clusterContainer[ 'newFeatureIds' ]
+            valid_feature_mask = clusterContainer[ 'valid_feature_mask' ]
+            best_feature_mask = clusterContainer[ 'best_feature_mask' ]
+
+            norm_features = norm_features[ : , best_feature_mask ]
+
+            #print 'norm_features[ : 20, 5 ]:'
+            #print norm_features[ : 20, 5 ]
+            #print 'norm_features[ : 20, 10 ]:'
+            #print norm_features[ : 20, 10 ]
+            #print 'norm_features[ : 20, 15 ]:'
+            #print norm_features[ : 20, 15 ]
 
             if method != 'kd-tree':
 
@@ -243,27 +281,49 @@ class Pipeline(Thread):
 
                 partition = cluster.partition_along_kd_tree( tree, norm_features )
 
-            clusterProfiles = self.__compute_cluster_profiles( self.nonControlCellMask, norm_features, clusters, partition, exp_factor )
+            """if 'nonControlClusterProfiles' in clusterContainer:
+                clusterProfiles = clusterContainer[ 'nonControlClusterProfiles' ]
+                print 'loading saved cluster profiles...'
+            else:
+                clusterProfiles = self.__compute_cluster_profiles( self.nonControlCellMask, norm_features, clusters, partition, exp_factor )
+                print 'computing new cluster profiles...'"""
+
+            print 'computing cluster profiles for treatment masks...'
+            masks = []
+            for tr in self.pdc.treatments:
+                mask = self.get_treatment_cell_mask( tr.index )[ self.get_non_control_cell_mask() ]
+                masks.append( mask )
+            clusterProfiles = cluster_profiles.compute_cluster_profiles( masks, norm_features, clusters, -1, 2.0 )
+
     
             mask = partition >= 0
             clusterContainer = {
                 'points' : norm_features[ mask ].copy(),
                 'partition' : partition[ mask ].copy(),
                 'clusters' : clusters.copy(),
+                'dump_cluster_index' : dump_cluster_index,
                 'method' : method,
                 'mask' : mask.copy(),
                 'featureNames' : featureNames,
                 'Z' : Z
             }
 
+            # print out some info about the clusters
+            print 'loaded %d clusters' % clusters.shape[0]
+            sum = 0
+            for i in xrange( clusters.shape[0] ):
+                count = numpy.sum( partition[:] == i )
+                sum += count
+                print 'cluster %d: %d' % ( i, count )
+    
             # keep the clusters, the partition, the silhouette and
             # the intra-cluster distances as public members
             self.nonControlNormFeatures = norm_features
-            self.nonControlClusters = clusters
-            self.nonControlPartition = partition
+            self.clusters = clusters
+            self.partition = partition
             self.nonControlWeights = None
-            self.nonControlIntraClusterDistances = None
-            self.nonControlInterClusterDistances = None
+            self.intraClusterDistances = None
+            self.interClusterDistances = None
             self.nonControlFeatureIds = featureIds
             self.nonControlFeatureNames = featureNames
             self.nonControlClusterProfiles = clusterProfiles
@@ -271,14 +331,128 @@ class Pipeline(Thread):
             self.method = method
             self.clusterContainer = clusterContainer
 
+            self.clusterDist = numpy.empty( ( self.pdc.objFeatures.shape[0], clusters.shape[0] ) )
+            self.clusterDist[:,:] = numpy.inf
+            self.clusterDist[ self.get_non_control_cell_mask() ] = distance.minkowski_cdist( norm_features, self.clusters )
+
+            # add the cluster ID to the object features
+            tmpFeatures = self.pdc.objFeatures
+            self.pdc.objFeatures = numpy.empty( ( tmpFeatures.shape[0], tmpFeatures.shape[1] + 1 ) )
+            self.pdc.objFeatures[:,:-1] = tmpFeatures[:,:]
+            cluster_ids = -numpy.ones( ( tmpFeatures.shape[0], ) )
+            cluster_ids[ self.get_non_control_cell_mask() ] = self.partition
+            self.pdc.objFeatures[:,-1] = cluster_ids[:]
+            self.pdc.objFeatureIds[ 'ClusterID' ] = tmpFeatures.shape[1]
+            del tmpFeatures
+
         finally:
 
             if filename != None:
                 file.close()
 
+    def get_total_cell_mask(self):
+        return numpy.ones( self.validCellMask.shape, dtype=bool )
+    def get_valid_cell_mask(self):
+        return self.validCellMask
+    def get_valid_image_mask(self):
+        return self.validImageMask
+    def get_control_treatment_cell_mask(self):
+        return self.controlTreatmentMask
+    def get_non_control_treatment_cell_mask(self):
+        return numpy.invert( self.controlTreatmentMask )
+    def get_non_control_cell_mask(self):
+        return self.nonControlCellMask
+    def get_control_cell_mask(self):
+        return self.controlCellMask
+    def get_invalid_cell_mask(self):
+        return self.mask_not( self.validCellMask )
+    def get_invalid_image_mask(self):
+        return self.mask_not( self.validImageMask )
+    def get_well_cell_mask(self, trId):
+        return self.pdc.objFeatures[ : , self.pdc.objWellFeatureId ] == trId
+    def get_well_image_mask(self, trId):
+        return self.pdc.imgFeatures[ : , self.pdc.imgWellFeatureId ] == trId
+    def get_treatment_cell_mask(self, trId):
+        return self.pdc.objFeatures[ : , self.pdc.objTreatmentFeatureId ] == trId
+    def get_treatment_image_mask(self, trId):
+        return self.pdc.imgFeatures[ : , self.pdc.imgTreatmentFeatureId ] == trId
+    def get_replicate_cell_mask(self, repId):
+        return self.pdc.objFeatures[ : , self.pdc.objReplicateFeatureId ] == repId
+    def get_replicate_image_mask(self, repId):
+        return self.pdc.imgFeatures[ : , self.pdc.imgReplicateFeatureId ] == repId
+    def get_slide_cell_mask(self, trId, repId):
+        return self.mask_or( self.get_treatment_cell_mask( trId ), self.get_replicate_cell_mask( repId ) )
+    def get_slide_image_mask(self, trId, repId):
+        return self.mask_or( self.get_treatment_image_mask( trId ), self.get_replicate_image_mask( repId ) )
+    def mask_not(self, mask):
+        numpy.invert( mask )
+    def mask_or(self, *masks):
+        mask = masks[0]
+        for i in xrange( 1, len( masks ) ):
+            mask = numpy.logical_or( mask, masks[ i ] )
+        return mask
+    def mask_and(self, *masks):
+        mask = masks[0]
+        for i in xrange( 1, len( masks ) ):
+            mask = numpy.logical_and( mask, masks[ i ] )
+        return mask
+    def get_cell_mask(self, *args, **kwargs):
+        mask = self.get_total_cell_mask()
+        for arg in args:
+            arg = arg.lower()
+            if arg in [ 'control', 'ctrl' ]:
+                mask2 = self.get_control_cell_mask()
+            elif arg in [ 'noncontrol', 'non-control', 'nonctrl', 'non-ctrl' ]:
+                mask2 = self.get_non_control_cell_mask()
+            elif arg == 'valid':
+                mask2 = self.get_valid_cell_mask()
+            elif arg == 'invalid':
+                mask2 = self.get_invalid_cell_mask()
+            mask = self.mask_and( mask, mask2 )
+        wellId = kwargs.get( 'wellId', -1 )
+        trId = kwargs.get( 'trId', -1 )
+        repId = kwargs.get( 'repId', -1 )
+        if wellId > -1:
+            mask2 = self.get_well_cell_mask( wellId )
+            mask = self.mask_and( mask, mask2 )
+        if trId > -1:
+            mask2 = self.get_treatment_cell_mask( trId )
+            mask = self.mask_and( mask, mask2 )
+        if repId > -1:
+            mask2 = self.get_replicate_cell_mask( trId )
+            mask = self.mask_and( mask, mask2 )
+        return mask
+    def get_image_mask(self, *args, **kwargs):
+        mask = self.get_total_image_mask()
+        for arg in args:
+            arg = arg.lower()
+            if arg in [ 'control', 'ctrl' ]:
+                mask2 = self.get_control_image_mask()
+            elif arg in [ 'noncontrol', 'non-control', 'nonctrl', 'non-ctrl' ]:
+                mask2 = self.get_non_control_image_mask()
+            elif arg == 'valid':
+                mask2 = self.get_valid_image_mask()
+            elif arg == 'invalid':
+                mask2 = self.get_invalid_image_mask()
+            mask = self.mask_and( mask, mask2 )
+        wellId = kwargs.get( 'wellId', -1 )
+        trId = kwargs.get( 'trId', -1 )
+        repId = kwargs.get( 'repId', -1 )
+        if wellId > -1:
+            mask2 = self.get_well_cell_mask( wellId )
+            mask = self.mask_and( mask, mask2 )
+        if trId > -1:
+            mask2 = self.get_treatment_cell_mask( trId )
+            mask = self.mask_and( mask, mask2 )
+        if repId > -1:
+            mask2 = self.get_replicate_cell_mask( trId )
+            mask = self.mask_and( mask, mask2 )
+        return mask
+
+
     def save_clusters(self, file):
 
-        #dict = { 'clusters' : self.nonControlClusters, 'featureNames' : self.nonControlFeatureNames }
+        #dict = { 'clusters' : self.clusters, 'featureNames' : self.nonControlFeatureNames }
         dict = { 'clusterContainer' : self.clusterContainer }
 
         filename = None
@@ -383,11 +557,16 @@ class Pipeline(Thread):
         # update state of the pipeline
         self.__state = self.PIPELINE_STATE_QUALITY_CONTROL
 
+        #for tr in self.pdc.treatments:
+        #    mask = self.pdc.objFeatures[ : , self.pdc.objTreatmentFeatureId ] == tr.index
+        #    mask = numpy.logical_and( self.validCellMask, mask )
+        #    print 'treatment %s: %d cells passed the quality control' % ( tr.name, numpy.sum( mask ) )
+
         # indicate success
         return True
 
 
-    def start_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD_AND_LIMIT, progressCallback=None):
+    def start_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD, featureNames=None, progressCallback=None):
         """Start the pipeline thread to perform the pre-filtering
     
         Input parameters:
@@ -399,18 +578,31 @@ class Pipeline(Thread):
         self.progressCallback = progressCallback
 
         # run the quality-control within the thread
-        self.start_method( self.run_pre_filtering, controlFilterMode )
+        self.start_method( self.run_pre_filtering, controlFilterMode, featureNames )
 
 
-    def run_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD):
+    def run_pre_filtering(self, controlFilterMode=analyse.FILTER_MODE_MEDIAN_xMAD, featureNames=None):
         """Perform pre-filtering
         """
 
         if not self.update_progress( 0 ):
             return False
 
+        print 'Running pre-filtering...'
+
+        if featureNames == None and analyse.filter_feature_set > -1:
+            print ( 'Using feature set %d:' % analyse.filter_feature_set ), self.clusterConfiguration[ analyse.filter_feature_set ][ 0 ]
+            featureNames = self.clusterConfiguration[ analyse.filter_feature_set ][ 1 ]
+
+        analyse.output_mean_control_cell_intensities( self.pdc, self.validCellMask )
+
         # reject cells which have NaN or Inf values
-        validCellMask, featureIds, bad_feature_cell_count = analyse.reject_cells_with_bad_features( self.pdc, self.validImageMask, self.validCellMask )
+        validCellMask, featureIds, bad_feature_cell_count = analyse.reject_cells_with_bad_features( self.pdc, self.validImageMask, self.validCellMask, featureNames )
+
+        print 'NAN:', numpy.sum(numpy.isnan(self.pdc.objFeatures[validCellMask][:, featureIds]))
+
+        # perform a PCA on the features
+        self.pca = analyse.run_pca(self.pdc, validCellMask, featureIds, PCA_components)
 
         num_of_cells_with_bad_features = numpy.sum( self.validCellMask ) - numpy.sum( validCellMask )
 
@@ -426,29 +618,81 @@ class Pipeline(Thread):
             if count > 0:
                 print '  feature %d: %d bad cells' % ( featureId, count )
 
+        # create a mask that contains all the cells in every control treatment
+        #
+        # we start with an empty mask
+        control_treatment_mask = numpy.zeros( validCellMask.shape, dtype=bool )
+        # and for each control treatment...
+        for name in analyse.control_treatment_names:
+            control_treatment = self.pdc.treatments[ self.pdc.treatmentByName[ name ] ]
+            # we add the corresponding cells to the mask
+            control_treatment_mask = self.mask_or(
+                    control_treatment_mask,
+                    self.pdc.objFeatures[ : , self.pdc.objTreatmentFeatureId ] == control_treatment.index
+            )
+        self.controlTreatmentMask = control_treatment_mask
 
         # reject control cells and select the features to be used
-        controlCellMask, nonControlCellMask, featureIds, mahal_dist, cell_selection_stats = analyse.reject_control_cells( self.pdc, self.validImageMask, self.validCellMask, controlFilterMode)
+        controlCellMask, nonControlCellMask, featureIds, mahal_dist, mahal_cutoff_window = \
+            analyse.reject_control_cells(
+                self.pdc, self.validImageMask, self.validCellMask, self.controlTreatmentMask,
+                featureIds, controlFilterMode, self.pca)
         #controlCellMask, nonControlCellMask, featureIds = analyse.cutoff_control_cells( self.pdc, featureNames, validImageMask, validCellMask )
 
-        self.cell_selection_stats = cell_selection_stats
+        # TODO
+        self.mahal_cutoff_window = mahal_cutoff_window
+
+        # reject control-like treatments
+        nonControlTreatments = analyse.reject_control_treatments(self.pdc, self.validCellMask, nonControlCellMask)
+
+        #print 'features used for phenotypic filtering:'
+        #fNames = self.pdc.objFeatureIds.keys()
+        #fValues = self.pdc.objFeatureIds.values()
+        #for featureId in featureIds:
+            #i = fValues.index( featureId )
+            #featureName = fNames[ i ]
+            #print '  %d -> %s' % ( featureId, featureName )
+        #print
+
+        # print out some info
+        print 'number of features used for phenotypic filtering: %d' % len(featureIds)
 
         if controlCellMask == None:
             return False
 
+        def append_object_feature(name, data):
+            tmpFeatures = self.pdc.objFeatures
+            self.pdc.objFeatures = numpy.empty( ( tmpFeatures.shape[0], tmpFeatures.shape[1] + 1 ) )
+            self.pdc.objFeatures[:,:-1] = tmpFeatures[:,:]
+            self.pdc.objFeatures[:,-1] = data
+            self.pdc.objFeatureIds[ name ] = tmpFeatures.shape[1]
+            del tmpFeatures
         # add the mahalanobis distance to the object features
-        tmpFeatures = self.pdc.objFeatures
-        self.pdc.objFeatures = numpy.empty( ( tmpFeatures.shape[0], tmpFeatures.shape[1] + 1 ) )
-        self.pdc.objFeatures[:,:-1] = tmpFeatures[:,:]
-        self.pdc.objFeatures[:,-1] = numpy.sqrt( mahal_dist[:] )
-        self.pdc.objFeatureIds[ 'Mahalanobis Distance' ] = tmpFeatures.shape[1]
-        del tmpFeatures
+        append_object_feature('Mahalanobis Distance', mahal_dist)
+
+        #TODO
+        features = self.pdc.objFeatures[validCellMask][:, featureIds]
+        pca_features = self.pca.transform(features)
+        new_pca_features = numpy.empty((self.pdc.objFeatures.shape[0], pca_features.shape[1]))
+        new_pca_features[validCellMask] = pca_features
+        new_pca_features[numpy.invert(validCellMask)] = numpy.inf
+        pca_features = new_pca_features
+        for i in xrange(pca_features.shape[1]):
+            append_object_feature('PCA %d' % (i+1), pca_features[:,i])
+
+        ## add the sqrt of mahalanobis distance to the object features
+        #tmpFeatures = self.pdc.objFeatures
+        #self.pdc.objFeatures = numpy.empty( ( tmpFeatures.shape[0], tmpFeatures.shape[1] + 1 ) )
+        #self.pdc.objFeatures[:,:-1] = tmpFeatures[:,:]
+        #self.pdc.objFeatures[:,-1] = numpy.sqrt( mahal_dist[:] )
+        #self.pdc.objFeatureIds[ 'Mahalanobis Distance Sqrt' ] = tmpFeatures.shape[1]
+        #del tmpFeatures
 
         # reject manually selected treatments
         for tr_name in reject_treatments:
             tr_id = self.pdc.treatmentByName[ tr_name ]
             tr = self.pdc.treatments[ tr_id ]
-            tr_mask = self.pdc.objFeatures[ :, self.pdc.objTreatmentFeatureId ] == tr.rowId
+            tr_mask = self.pdc.objFeatures[ :, self.pdc.objTreatmentFeatureId ] == tr.index
             tmp_mask = numpy.logical_and( nonControlCellMask, tr_mask )
             controlCellMask[ tmp_mask ] = True
             nonControlCellMask[ tr_mask ] = False
@@ -459,7 +703,7 @@ class Pipeline(Thread):
         for tr in self.pdc.treatments:
             if tr.name not in reject_treatments:
                 validTreatments.append( tr )
-                validTreatmentIds.append( tr.rowId )
+                validTreatmentIds.append( tr.index )
 
         # print out the number of cells to be used for clustering
         print 'cells used for clustering: %d' % numpy.sum( nonControlCellMask )
@@ -477,6 +721,7 @@ class Pipeline(Thread):
         self.nonControlCellMask = nonControlCellMask
         self.nonControlFeatures = nonControlFeatures
         self.nonControlMahalDist = nonControlMahalDist
+        self.featureIds = featureIds
 
         # keep the list of valid treatments
         self.validTreatments = validTreatments
@@ -489,7 +734,7 @@ class Pipeline(Thread):
         return True
 
 
-    #def run_pipeline(self, supercluster_index=0, progressCallback=None):
+    #def run_pipeline(self, featureset_index=0, progressCallback=None):
     #    """Start the pipeline thread to perform the pre-filtering
     #
     #    Input parameters:
@@ -528,7 +773,7 @@ class Pipeline(Thread):
     #    print 'number of valid cells: %d' % validCellMask.sum()
     #
     #
-    #    featureNames = self.clusterConfiguration[ supercluster_index ][ 1 ]
+    #    featureNames = self.clusterConfiguration[ featureset_index ][ 1 ]
     #
     #    print featureNames
     #
@@ -597,8 +842,8 @@ class Pipeline(Thread):
     #    self.update_progress( 100 )
     #
     #
-    #    self.nonControlClusters = clusters
-    #    self.nonControlPartition = partition"""
+    #    self.clusters = clusters
+    #    self.partition = partition"""
     #
     #    self.validImageMask = validImageMask
     #    self.validCellMask = validCellMask
@@ -648,11 +893,11 @@ class Pipeline(Thread):
         return best_num_of_clusters, gaps, sk
 
 
-    def start_clustering(self, method, index=0, param1=-1, param2=-1, param3=-1, param4=-1, exp_factor=-1, calculate_silhouette=False, progressCallback=None):
+    def start_clustering(self, group_description, method, index=0, param1=-1, param2=-1, param3=-1, param4=-1, exp_factor=-1, calculate_silhouette=False, progressCallback=None):
         """Start the pipeline thread to perform the clustering
     
         Input parameters:
-            - index: The index of the supercluster to use
+            - index: The index of the featureset to use
             - num_of_clusters: The number of clusters to be used.
               if the value -1 is passed, an educated guess is made
             - calculate_silhouette: Determins wether to calculate the silhouette
@@ -665,7 +910,7 @@ class Pipeline(Thread):
         self.progressCallback = progressCallback
 
         # run the quality-control within the thread
-        self.start_method( self.run_clustering, method, index, param1, param2, param3, param4, exp_factor, calculate_silhouette )
+        self.start_method( self.run_clustering, group_description, method, index, param1, param2, param3, param4, exp_factor, calculate_silhouette )
 
     def write_features_file(self, filename, features, id_mapping=None, featureNames=None):
         f = open(filename,'w')
@@ -693,16 +938,27 @@ class Pipeline(Thread):
         f.close()
 
 
-    def __compute_normalized_features(self, featureNames):
+    def __compute_normalized_features(self, cellMask, featureNames, controlCellMask=None, num_of_features=10):
+
+        if controlCellMask == None:
+            controlCellMask = cellMask
 
         featureIds = []
         for featureName in featureNames:
             featureIds.append( self.pdc.objFeatureIds[ featureName ] )
 
-        id_mapping = numpy.array( featureIds )
+        featureIds = numpy.array( featureIds )
+        print 'featureIds:', featureIds
 
         # extract the features for the clustering
-        features = self.pdc.objFeatures[ self.nonControlCellMask ][ : , featureIds ]
+        features = self.pdc.objFeatures[ cellMask ][ : , featureIds ]
+        controlFeatures = self.pdc.objFeatures[ controlCellMask ][ : , featureIds ]
+        print 'features.shape:', features.shape
+
+        nan_mask = numpy.isnan( controlFeatures )
+        collapsed_nan_mask = numpy.any( nan_mask, axis=1 )
+        inverse_mask = numpy.invert( collapsed_nan_mask )
+        controlFeatures = controlFeatures[ inverse_mask ]
 
         # normalize the features
         #
@@ -713,41 +969,69 @@ class Pipeline(Thread):
         # calculate the normalized features
         #norm_features = ( features - median ) / mad
         # calculate standard-deviations
-        stddev = numpy.std( features, 0 )
+        stddev = numpy.std( controlFeatures, 0 )
         # calculate means
-        mean = numpy.mean( features, 0 )
+        mean = numpy.mean( controlFeatures, 0 )
         # calculate the normalized features
         norm_features = ( features - mean ) / stddev
         # create a mask of valid features
         nan_mask = numpy.isnan( norm_features )
         inf_mask = numpy.isinf( norm_features )
-        invalid_mask = numpy.logical_or( nan_mask, inf_mask )
-        invalid_mask = numpy.any( invalid_mask, 0 )
-        valid_mask = numpy.logical_not( invalid_mask )
+        invalid_feature_nan_mask = numpy.all(nan_mask, 0)
+        invalid_feature_inf_mask = numpy.all(inf_mask, 0)
+        invalid_feature_mask = numpy.logical_or( invalid_feature_nan_mask, invalid_feature_inf_mask )
+        valid_feature_mask = numpy.logical_not( invalid_feature_mask )
+        print 'sum(invalid_feature_nan_mask):', numpy.sum(invalid_feature_nan_mask)
+        print 'sum(invalid_feature_inf_mask):', numpy.sum(invalid_feature_inf_mask)
+
+        norm_features = norm_features[ : , valid_feature_mask ]
+
+        nan_mask = numpy.isnan( norm_features )
+        inf_mask = numpy.isinf( norm_features )
+        invalid_cell_nan_mask = numpy.any(nan_mask,1)
+        invalid_cell_inf_mask = numpy.any(inf_mask,1)
+        invalid_cell_mask = numpy.logical_or(invalid_cell_nan_mask, invalid_cell_inf_mask)
+        valid_cell_mask = numpy.logical_not(invalid_cell_mask)
+        print 'invalid nan cells:', numpy.sum(invalid_cell_nan_mask)
+        print 'invalid inf cells:', numpy.sum(invalid_cell_inf_mask)
 
         # only keep valid features
-        norm_features = norm_features[ : , valid_mask ]
+        norm_features = norm_features[valid_cell_mask]
 
-        return norm_features, valid_mask
+        return valid_cell_mask, norm_features, valid_feature_mask, featureIds[ valid_feature_mask ]
 
-    def compute_normalized_features(self, supercluster_index):
+    def compute_normalized_features(self, cellMask, featureset_index, controlCellMask=None):
 
         # determine the IDs of the features to be used
-        featureNames = self.clusterConfiguration[ supercluster_index ][ 1 ]
-        return self.__compute_normalized_features( featureNames )
+        featureNames = self.clusterConfiguration[ featureset_index ][ 1 ]
+        print 'featureNames:', featureNames
+        return self.__compute_normalized_features( cellMask, featureNames, controlCellMask )
 
 
-    def run_clustering(self, method, supercluster_index=0, param1=-1, param2=-1, param3=-1, param4=-1, exp_factor=-1, calculate_silhouette=False):
+    """def run_histogram_analysation(self, featureset_index=0):
+
+        histograms = numpy.empty( (  ) )
+
+        for tr in self.pdc.treatments:
+            for repl in tr.replicates:"""
+
+
+    def run_clustering(self, group_description, method, index=0, param1=-1, param2=-1, param3=-1, param4=-1, exp_factor=-1, calculate_silhouette=False):
         """Perform the clustering
     
         Input parameters:
             - method: the clustering method to use (see cluster.get_hcluster_methods)
-            - supercluster_index: The index of the supercluster to use
+            - featureset_index: The index of the feature-set to use
             - param1: first parameter for the clustering (see cluster.hcluster)
             - param2: second parameter for the clustering (see cluster.hcluster)
             - calculate_silhouette: Determins wether to calculate the silhouette
               of the final clustering
         """
+
+        print('param1:', param1, 'param2:', param2, 'param3:', param3,
+              'param4:', param4, 'exp_factor:', exp_factor)
+
+        featureset_index = index
 
         # If num_of_clusters is not provided, check wether the parameter
         # number_of_clusters has been defined.
@@ -765,7 +1049,7 @@ class Pipeline(Thread):
             return False
 
         # determine the IDs of the features to be used
-        featureNames = self.clusterConfiguration[ supercluster_index ][ 1 ]
+        featureNames = self.clusterConfiguration[ featureset_index ][ 1 ]
         featureIds = []
         for featureName in featureNames:
             featureIds.append( self.pdc.objFeatureIds[ featureName ] )
@@ -824,9 +1108,144 @@ class Pipeline(Thread):
 
 
         # only keep valid features
-        #norm_features = norm_features[ : , valid_mask ]
+        #norm_features = norm_features[ : , valid_feature_mask ]
 
-        norm_features, valid_mask = self.compute_normalized_features( supercluster_index )
+        print 'group_description:', group_description
+        groups = grouping.get_groups(group_description, self.pdc)
+        #names,masks = zip(*groups)
+        groupingCellMask = grouping.join_groups(groups)
+        groupingCellMask = self.mask_and(groupingCellMask, self.nonControlCellMask)
+
+        valid_cell_mask, norm_features, valid_feature_mask, newFeatureIds = self.compute_normalized_features( groupingCellMask, featureset_index, self.get_control_treatment_cell_mask() )
+        featureIds = newFeatureIds
+        features = features[valid_cell_mask][:,valid_feature_mask]
+        cellMask = groupingCellMask.copy()
+        tempMask = cellMask[cellMask]
+        tempMask[numpy.logical_not(valid_cell_mask)] = False
+        cellMask[cellMask] = tempMask
+        #print 'control_treatment_cell_maskk:', self.get_control_treatment_cell_mask().shape, self.get_control_treatment_cell_mask().dtype
+        #print 'nonControlCellMask:', self.nonControlCellMask.shape, self.nonControlCellMask.dtype
+
+        #a = numpy.arange(cellMask.shape[0])
+        #a = a[cellMask]
+        #numpy.random.shuffle(a)
+        #a = a[:5000]
+        #m = cellMask.copy()
+        #m[:] = False
+        #m[a] = True
+        #m = m[cellMask]
+        #norm_features = norm_features[m]
+        #valid_cell_mask = valid_cell_mask[m]
+        #cellMask[:] = False
+        #cellMask[a] = True
+
+        print 'norm_features.shape:', norm_features.shape
+        print 'numpy.sum(valid_feature_mask):', numpy.sum(valid_feature_mask)
+        print 'valid_feature_mask.shape:', valid_feature_mask.shape
+        print 'newFeatureIds:', newFeatureIds
+
+        best_feature_mask = numpy.ones( ( norm_features.shape[1], ), dtype=bool )
+
+
+        do_feature_selection = False
+        if do_feature_selection:
+
+            from batch import utils as batch_utils
+
+            NUM_OF_FEATURES = 5
+            BOOTSTRAP_COUNT_MULTIPLIER = 0.1
+            BOOTSTRAP_COUNT_MAX = 200
+            BOOTSTRAP_SAMPLE_SIZE_RATIO = 0.2
+            #RESAMPLE_MAX = 3
+
+            ctrl_mask = self.mask_and( self.get_control_treatment_cell_mask(), self.get_valid_cell_mask() )
+            obs = self.pdc.objFeatures[ ctrl_mask ][ : , newFeatureIds ]
+            mask3 = self.mask_and( self.get_non_control_treatment_cell_mask(), self.get_valid_cell_mask() )
+            bootstrap_sample_size = round( BOOTSTRAP_SAMPLE_SIZE_RATIO * obs.shape[0] )
+            obs1 = numpy.empty( ( bootstrap_sample_size, newFeatureIds.shape[0] ) )
+            #self.pdc.objFeatures[ mask1 ][ : , newFeatureIds ]
+            #edf1 = batch_utils.compute_edf( obs1 )
+            obs3 = self.pdc.objFeatures[ mask3 ][ : , newFeatureIds ]
+            edf3 = batch_utils.compute_edf( obs3 )
+            obs2 = numpy.empty( obs1.shape )
+            bootstrap_count = int( BOOTSTRAP_COUNT_MULTIPLIER * obs.shape[0] + 0.5 )
+            bootstrap_count = numpy.min( [ bootstrap_count, BOOTSTRAP_COUNT_MAX ] )
+            dist = numpy.empty( ( bootstrap_count + 1, norm_features.shape[1] ) )
+            bootstrap_dist = numpy.empty( ( bootstrap_count, norm_features.shape[1] ) )
+            print 'bootstrapping ks statistics (%d)...' % ( bootstrap_count )
+            for i in xrange( bootstrap_count ):
+                sys.stdout.write('\riteration %d...' % ( i+1 ))
+                sys.stdout.flush()
+                resample_ids = numpy.random.randint( 0, obs.shape[0], 2*obs1.shape[0] )
+                obs1 = obs[ resample_ids[:obs1.shape[0]] ]
+                obs2 = obs[ resample_ids[obs1.shape[0]:] ]
+                edf1 = batch_utils.compute_edf( obs1 )
+                edf2 = batch_utils.compute_edf( obs2 )
+                for k in xrange( norm_features.shape[1] ):
+                    support1 = edf1[ k ]
+                    support2 = edf2[ k ]
+                    support3 = edf3[ k ]
+                    bootstrap_dist[ i, k ] = batch_utils.compute_edf_distance( support1, support2 )
+                    dist1 = batch_utils.compute_edf_distance( support1, support3 )
+                    dist2 = batch_utils.compute_edf_distance( support2, support3 )
+                    dist[ i, k ] = max( dist1, dist2 )
+            edf = batch_utils.compute_edf( obs )
+            for k in xrange( norm_features.shape[1] ):
+                support = edf[ k ]
+                support3 = edf3[ k ]
+                dist[ bootstrap_count, k ] = batch_utils.compute_edf_distance( support, support3 )
+
+            max_dist = numpy.max( dist[:-1], axis=0 )
+            mean_dist = numpy.mean( dist[:-1], axis=0 )
+            median_dist = numpy.median( dist[:-1], axis=0 )
+            stddev_dist = numpy.std( dist[:-1], axis=0 )
+
+            max_bootstrap_dist = numpy.max( bootstrap_dist, axis=0 )
+            mean_bootstrap_dist = numpy.mean( bootstrap_dist, axis=0 )
+            median_bootstrap_dist = numpy.median( bootstrap_dist, axis=0 )
+            stddev_bootstrap_dist = numpy.std( bootstrap_dist, axis=0 )
+
+            def select_best_features(feature_quality, num_of_features=3):
+                best_feature_mask = numpy.ones( ( feature_quality.shape[0], ), dtype=bool )
+                if num_of_features > 0 and feature_quality.shape[0] > num_of_features:
+                    num_of_features = min( num_of_features, feature_quality.shape[0] )
+                    sorted_feature_indices = numpy.argsort( feature_quality )
+                    best_feature_mask[ sorted_feature_indices[ : -num_of_features ] ] = False
+                return best_feature_mask
+
+            print 'selecting %d best features...' % NUM_OF_FEATURES
+
+            feature_quality = dist[-1] - mean_bootstrap_dist
+            best_feature_mask = select_best_features( feature_quality, NUM_OF_FEATURES )
+            norm_features = norm_features[ : , best_feature_mask ]
+            newFeatureIds = newFeatureIds[ best_feature_mask ]
+            #ids = numpy.arange( valid_feature_mask.shape[0] )[ valid_feature_mask ][ best_feature_mask ]
+            #valid_feature_mask = numpy.zeros( valid_feature_mask.shape, dtype=bool )
+            #valid_feature_mask[ ids ] = True
+            #ids = fids[ valid_feature_mask ]
+            valid_feature_mask2 = numpy.zeros( valid_feature_mask.shape, dtype=bool )
+            valid_feature_mask2[ valid_feature_mask ] = best_feature_mask
+            valid_feature_mask = valid_feature_mask2
+
+            print 'best informative features:'
+            print newFeatureIds
+            for (i,feature_id) in enumerate( newFeatureIds ):
+                fname = None
+                for fn,fid in self.pdc.objFeatureIds.iteritems():
+                    if fid == feature_id:
+                        fname = fn
+                        break
+                print 'feature (%d): %s, %f' % ( feature_id, fname, feature_quality[i] )
+
+
+        #print 'features used for clustering:'
+        #fNames = self.pdc.objFeatureIds.keys()
+        #fValues = self.pdc.objFeatureIds.values()
+        #for featureId in newFeatureIds:
+            #i = fValues.index( featureId )
+            #featureName = fNames[ i ]
+            #print '  %d -> %s' % ( featureId, featureName )
+        #print
 
         # print out some info
         print 'number of features used for clustering: %d' % norm_features.shape[ 1 ]
@@ -855,35 +1274,61 @@ class Pipeline(Thread):
         if param3 == -1:
             param3 = minkowski_p
 
-        #print 'importing time module...'
-        #import time
-        #print 'imported time module'
-
-        #t1 = time.time()
-        #c1 = time.clock()
-        #print 't1: %.2f' % t1
-        #print 'c1: %.2f' % c1
-
         #partition,clusters,Z = cluster.cluster_hierarchical_seeds( norm_features, num_of_clusters, objects_to_cluster, minkowski_p )
         #dist_threshold = 15.0
-        #partition,clusters,Z = cluster.hcluster( method, norm_features, param1, param2, supercluster_index, param3 )
-        partition,clusters,Z = cluster.hcluster_special( method, norm_features, param1, param2, param4, supercluster_index, param3 )
+        #partition,clusters,Z = cluster.hcluster( method, norm_features, param1, param2, featureset_index, param3 )
+        if method == 'mahalanobis':
+            method2 = 'mahalanobis'
+            method = 'k-means'
+
+        t1 = time.time()
+        c1 = time.clock()
+        print 't1: %.2f' % t1
+        print 'c1: %.2f' % c1
+
+        import cPickle
+        f = open('/g/pepperkok/hepp/cell_objects.pic', 'w')
+        p = cPickle.Pickler(f)
+        p.dump(norm_features)
+        f.close()
+
+        partition,clusters,Z = cluster.hcluster_special( method, norm_features, param1, param2, param4, featureset_index, param3 )
+
+        c2 = time.clock()
+        t2 = time.time()
+        print 't2: %.2f' % t2
+        print 'c2: %.2f' % c2
+
+        dc = c2 - c1
+        dt = t2 - t1
+        print 'clocks: %.2f' % dc
+        print 'time: %.2f' % dt
+
+        #if clusters == None:
+        #    clusters = cluster.compute_centroids_from_partition(norm_features, partition)
+
         self.Z = Z
-
-        #c2 = time.clock()
-        #t2 = time.time()
-        #print 't2: %.2f' % t2
-        #print 'c2: %.2f' % c2
-
-        #dc = c2 - c1
-        #dt = t2 - t1
-        #print 'clocks: %.2f' % dc
-        #print 'time: %.2f' % dt
+        try:
+            method = method2
+        except:
+            pass
 
         print partition.shape
         if method not in [ 'kd-tree', 'random' ]:
             print clusters.shape
             print Z.shape
+
+        import cPickle
+        clusterSizes = numpy.empty((clusters.shape[0],), dtype=int)
+        for i in xrange(clusters.shape[0]):
+            clusterSizes[i] = numpy.sum(partition == i)
+        # sanity check
+        if numpy.sum(clusterSizes) != norm_features.shape[0]:
+            raise Exception('Something went really wrong here!')
+        f = open('/g/pepperkok/hepp/cluster_sizes.pic', 'w')
+        p = cPickle.Pickler(f)
+        p.dump(clusterSizes)
+        f.close()
 
         """import pickle
         f = open('/home/hepp/Z.pickle','w')
@@ -923,7 +1368,7 @@ class Pipeline(Thread):
 
             print 'weights of cluster %d:' % k
             identity_arr = numpy.arange( features.shape[1] )
-            mapping = identity_arr[ valid_mask ]
+            mapping = identity_arr[ valid_feature_mask ]
             for i in xrange( weights.shape[0] ):
                 print '%d -> %f (%f, %f) {%f, %f} [%s]' % ( id_mapping[ mapping[i] ], weights[0, i], stddevs[i], all_stddevs[i], medians[i], mads[i], featureNames[ mapping[i] ] )
             print
@@ -936,7 +1381,7 @@ class Pipeline(Thread):
         #        print '  %f' % ( norm_features[ p_mask ][i,j] )
         #print
 
-        if False:
+        """if False:
 
             f = open('/home/hepp/clusters.xls','w')
 
@@ -944,7 +1389,7 @@ class Pipeline(Thread):
             row.append( '' )
             row.append( '' )
             identity_arr = numpy.arange( features.shape[1] )
-            mapping = identity_arr[ valid_mask ]
+            mapping = identity_arr[ valid_feature_mask ]
             for i in xrange( norm_features.shape[1] ):
                 row.append( '%d' % id_mapping[ mapping[i] ] )
             f.write( ','.join( row ) + '\n' )
@@ -962,7 +1407,7 @@ class Pipeline(Thread):
             f.write( ','.join( row ) + '\n' )
             for k in xrange( clusters.shape[0] ):
                 p_mask = partition[:] == k
-                feat = features[:,valid_mask][p_mask]
+                feat = features[:,valid_feature_mask][p_mask]
                 sfeat = numpy.std( feat, axis=0 )
                 row = []
                 row.append( '%d' % k )
@@ -977,7 +1422,7 @@ class Pipeline(Thread):
             row.append( '' )
             row.append( '' )
             identity_arr = numpy.arange( features.shape[1] )
-            mapping = identity_arr[ valid_mask ]
+            mapping = identity_arr[ valid_feature_mask ]
             for i in xrange( norm_features.shape[1] ):
                 row.append( '%d' % id_mapping[ mapping[i] ] )
             f.write( ','.join( row ) + '\n' )
@@ -995,7 +1440,7 @@ class Pipeline(Thread):
             f.write( ','.join( row ) + '\n' )
             for k in xrange( clusters.shape[0] ):
                 p_mask = partition[:] == k
-                feat = features[:,valid_mask][p_mask]
+                feat = features[:,valid_feature_mask][p_mask]
                 for i in xrange( feat.shape[0] ):
                     row = []
                     row.append( '%d' % i )
@@ -1011,7 +1456,7 @@ class Pipeline(Thread):
             row.append( '' )
             row.append( '' )
             identity_arr = numpy.arange( features.shape[1] )
-            mapping = identity_arr[ valid_mask ]
+            mapping = identity_arr[ valid_feature_mask ]
             for i in xrange( norm_features.shape[1] ):
                 row.append( '%d' % id_mapping[ mapping[i] ] )
             f.write( ','.join( row ) + '\n' )
@@ -1029,7 +1474,7 @@ class Pipeline(Thread):
             f.write( ','.join( row ) + '\n' )
             for k in xrange( clusters.shape[0] ):
                 p_mask = partition[:] == k
-                feat = features[:,valid_mask][p_mask]
+                feat = features[:,valid_feature_mask][p_mask]
                 nfeat = norm_features[p_mask]
                 sfeat = numpy.std( feat, axis=0 )
                 snfeat = numpy.std( nfeat, axis=0 )
@@ -1046,7 +1491,7 @@ class Pipeline(Thread):
             row.append( '' )
             row.append( '' )
             identity_arr = numpy.arange( features.shape[1] )
-            mapping = identity_arr[ valid_mask ]
+            mapping = identity_arr[ valid_feature_mask ]
             for i in xrange( norm_features.shape[1] ):
                 row.append( '%d' % id_mapping[ mapping[i] ] )
             f.write( ','.join( row ) + '\n' )
@@ -1064,7 +1509,7 @@ class Pipeline(Thread):
             f.write( ','.join( row ) + '\n' )
             for k in xrange( clusters.shape[0] ):
                 p_mask = partition[:] == k
-                feat = features[:,valid_mask][p_mask]
+                feat = features[:,valid_feature_mask][p_mask]
                 nfeat = norm_features[p_mask]
                 for i in xrange( nfeat.shape[0] ):
                     row = []
@@ -1073,7 +1518,7 @@ class Pipeline(Thread):
                     for j in xrange( nfeat.shape[1] ):
                         row.append( '%f' % ( nfeat[ i, j ] ) )
                     f.write( ','.join( row ) + '\n' )
-            f.close()
+            f.close()"""
 
 
         """partition_mask = partition >= 0
@@ -1088,13 +1533,16 @@ class Pipeline(Thread):
         )
         partition[ non_partition_mask ] = new_partition"""
 
+        dump_cluster_index = -1
 
-        if method not in [ 'kd-tree', 'random' ]:
+        if method in [ 'ward', 'single', 'average', 'complete' ]:
+            method = 'k-means'
 
-            #if method == 'ward':
+        if method in [ 'ward', 'single', 'average', 'complete' ]:
+
             discard_cluster_threshold = param4
     
-            print 'threshold=', discard_cluster_threshold
+            print 'discard_cluster_threshold=%d' % discard_cluster_threshold
     
     
             # Discard clusters which are smaller than discard_cluster_threshold.
@@ -1125,13 +1573,14 @@ class Pipeline(Thread):
     
             mask = partition == -1
             #partition[ mask ] = clusters.shape[0]
-    
-            print 'discarded %d cells' % ( numpy.sum( mask ) )
-    
+            #dump_cluster_index = clusters.shape[0]
+
             #new_clusters = numpy.empty( ( clusters.shape[0] + 1, clusters.shape[1] ) )
             #new_clusters[ : -1 ] = clusters
             #new_clusters[ -1 ] = numpy.nan
             #clusters = new_clusters
+
+            print 'discarded %d cells' % ( numpy.sum( mask ) )
     
             print clusters.shape
     
@@ -1142,12 +1591,111 @@ class Pipeline(Thread):
                 'points' : norm_features[ mask ].copy(),
                 'partition' : partition[ mask ].copy(),
                 'clusters' : clusters.copy(),
-                'method' : method,
+                'dump_cluster_index' : dump_cluster_index,
                 'mask' : mask.copy(),
                 'featureNames' : featureNames,
-                'Z' : Z
+                'Z' : Z,
+                'method' : method,
+                'featureset_index' : featureset_index,
+                'exp_factor' : exp_factor,
+                'param1' : param1,
+                'param2': param2,
+                'param3': param3,
+                'param4': param4,
+                'valid_feature_mask' : valid_feature_mask,
+                'newFeatureIds' : newFeatureIds,
+                'best_feature_mask' : best_feature_mask
             }
+
+            # Compute standard-deviation vector for each cluster
+            stddevs = numpy.empty( clusters.shape )
+            for i in xrange( clusters.shape[ 0 ] ):
+                partition_mask = partition[:] == i
+                stddevs[ i ] = numpy.std( norm_features[ partition_mask ], axis=0 )
     
+            # print out some info about the dissolving
+            print 'found %d clusters' % clusters.shape[0]
+            sum = 0
+            for i in xrange( clusters.shape[0] ):
+                count = numpy.sum( partition[:] == i )
+                sum += count
+                print 'cluster %d: %d' % ( i, count )
+    
+            print 'clustered %d out of %d cells' % ( sum, norm_features.shape[0] )
+    
+            print 'clusters.shape:', clusters.shape
+            print 'min(partition):', numpy.min( partition ), 'max(partition):', numpy.max( partition )
+    
+        elif method not in [ 'kd-tree', 'random' ]:
+
+            #if method == 'ward':
+            discard_cluster_threshold = param4
+    
+            print 'discard_cluster_threshold=%d' % discard_cluster_threshold
+    
+    
+            # Discard clusters which are smaller than discard_cluster_threshold.
+            # All discarded cells will be put into a 'dump' cluster.
+            keep_cluster_indices = []
+            discard_cluster_indices = []
+            cluster_mask = numpy.ones( ( clusters.shape[0], ), dtype=bool )
+            for i in xrange( clusters.shape[ 0 ] ):
+                # determine the mask of this cluster...
+                partition_mask = partition[:] == i
+                # and it's size...
+                cluster_size = numpy.sum( partition_mask )
+                # and check if it should be discarded
+                if cluster_size < discard_cluster_threshold:
+                    print 'discarding cluster %d: %d cells' % ( i, cluster_size )
+                    partition[ partition_mask ] = -1
+                    discard_cluster_indices.append( i )
+                    cluster_mask[ i ] = False
+    
+            print 'discarded %d clusters' % ( len( discard_cluster_indices ) )
+    
+            clusters = clusters[ cluster_mask ]
+    
+            discard_cluster_indices.reverse()
+            for i in discard_cluster_indices:
+                mask = partition > i
+                partition[ mask ] -= 1
+    
+            mask = partition == -1
+            #partition[ mask ] = clusters.shape[0]
+            #dump_cluster_index = clusters.shape[0]
+
+            #new_clusters = numpy.empty( ( clusters.shape[0] + 1, clusters.shape[1] ) )
+            #new_clusters[ : -1 ] = clusters
+            #new_clusters[ -1 ] = numpy.nan
+            #clusters = new_clusters
+
+            print 'discarded %d cells' % ( numpy.sum( mask ) )
+    
+            print clusters.shape
+    
+            clusters = cluster.compute_centroids_from_partition( norm_features, partition )
+    
+            mask = partition >= 0
+            clusterContainer = {
+                'points' : norm_features[ mask ].copy(),
+                'partition' : partition[ mask ].copy(),
+                'clusters' : clusters.copy(),
+                'dump_cluster_index' : dump_cluster_index,
+                'mask' : mask.copy(),
+                'featureNames' : featureNames,
+                'Z' : Z,
+                'method' : method,
+                'featureset_index' : featureset_index,
+                'exp_factor' : exp_factor,
+                'param1' : param1,
+                'param2': param2,
+                'param3': param3,
+                'param4': param4,
+                'valid_feature_mask' : valid_feature_mask,
+                'newFeatureIds' : newFeatureIds,
+                'best_feature_mask' : best_feature_mask
+            }
+
             partition = self.__partition_along_clusters( norm_features, clusterContainer, param3 )
 
             #print 'found %d non-discarded clusters' % clusters.shape[0]
@@ -1325,7 +1873,7 @@ class Pipeline(Thread):
                 sum += count
                 print 'cluster %d: %d' % ( i, count )
     
-            print 'clustered %d cells' % sum
+            print 'clustered %d out of %d cells' % ( sum, norm_features.shape[0] )
     
             """for k in xrange( clusters.shape[ 0 ] ):
                 # determine the mask of this cluster...
@@ -1351,10 +1899,20 @@ class Pipeline(Thread):
                 'points' : norm_features[ mask ].copy(),
                 'partition' : partition[ mask ].copy(),
                 'clusters' : clusters.copy(),
-                'method' : method,
+                'dump_cluster_index' : dump_cluster_index,
                 'mask' : mask.copy(),
                 'featureNames' : featureNames,
-                'Z' : Z
+                'Z' : Z,
+                'method' : method,
+                'featureset_index' : featureset_index,
+                'exp_factor' : exp_factor,
+                'param1' : param1,
+                'param2': param2,
+                'param3': param3,
+                'param4': param4,
+                'valid_feature_mask' : valid_feature_mask,
+                'newFeatureIds' : newFeatureIds,
+                'best_feature_mask' : best_feature_mask
             }
 
         # compute the intra-cluster distances of all the samples to the centroid
@@ -1381,32 +1939,172 @@ class Pipeline(Thread):
         #)
         inter_cluster_distances = None
 
-
-        clusterProfiles = self.__compute_cluster_profiles( self.nonControlCellMask, norm_features, clusters, partition,  exp_factor )
+        oldPartition = partition
+        partition = -numpy.ones(valid_cell_mask.shape, dtype=int)
+        partition[valid_cell_mask] = oldPartition
 
         if not self.update_progress( 100 ):
             return False
 
         # keep the clusters, the partition, the silhouette and
         # the intra-cluster distances as public members
-        self.nonControlNormFeatures = norm_features
-        self.nonControlClusters = clusters
-        self.nonControlPartition = partition
-        self.nonControlWeights = weights
+        self.clusterCellMask = cellMask
+        self.clusterNormFeatures = norm_features
+        self.clusterFeatures = features
+        self.clusterFeatureIds = featureIds
+        #self.clusterFeatureNames = featureNames
+        self.clusters = clusters
+        self.partition = partition
+        #self.nonControlWeights = weights
         #self.nonControlSilhouette = silhouette
-        self.nonControlIntraClusterDistances = intra_cluster_distances
-        self.nonControlInterClusterDistances = inter_cluster_distances
-        self.nonControlFeatureIds = featureIds
-        self.nonControlFeatureNames = featureNames
-        self.nonControlClusterProfiles = clusterProfiles
+        self.intraClusterDistances = intra_cluster_distances
+        self.interClusterDistances = inter_cluster_distances
+
+        self.clusterDist = numpy.empty( ( self.pdc.objFeatures.shape[0], clusters.shape[0] ) )
+        self.clusterDist[:,:] = numpy.inf
+        print 'clusterDist.shape:', self.clusterDist.shape
+        print 'cellMask.shape:', cellMask.shape
+        self.clusterDist[cellMask] = distance.minkowski_cdist( norm_features, clusters )
 
         self.clusterContainer = clusterContainer
 
         # update state of the pipeline
         self.__state = self.PIPELINE_STATE_CLUSTERING
 
+        # add the cluster ID to the object features
+        tmpFeatures = self.pdc.objFeatures
+        self.pdc.objFeatures = numpy.empty( ( tmpFeatures.shape[0], tmpFeatures.shape[1] + 1 ) )
+        self.pdc.objFeatures[:,:-1] = tmpFeatures[:,:]
+        cluster_ids = -numpy.ones( ( tmpFeatures.shape[0], ) )
+        cluster_ids[cellMask] = self.partition
+        self.pdc.objFeatures[:,-1] = cluster_ids[:]
+        self.pdc.objFeatureIds[ 'ClusterID' ] = tmpFeatures.shape[1]
+        del tmpFeatures
+
         return True
 
+    @classmethod
+    def get_hcluster_methods(cls):
+        return [
+            ('CLink', 'complete'),
+            ('SLink', 'single'),
+            ('ALink', 'average'),
+            ('Ward', 'ward')
+        ]
+
+    def start_cluster_profiling(self, cluster_method, hcluster_method='average',
+                                exp_factor=-1, profile_metric='quadratic_chi',
+                                group_descriptions=['treatment','replicate'], progressCallback=None):
+        """Start the pipeline thread to perform the cluster profiling
+    
+        Input parameters:
+            - progressCallback: A thread-safe callback method. This method must
+              accept an integer parameter that contains the progress of the
+              pipeline thread (usually between 0 and 100)
+        """
+
+        self.progressCallback = progressCallback
+
+        # run the quality-control within the thread
+        self.start_method(self.run_cluster_profiling, cluster_method, hcluster_method,
+                          exp_factor, profile_metric, group_descriptions)
+
+    def run_cluster_profiling(self, cluster_method, hcluster_method='average',
+                              exp_factor=-1, profile_metric='quadratic_chi',
+                              group_descriptions=['treatment','replicate']):
+        """Perform the cluster profiling
+    
+        Input parameters:
+        """
+
+        if exp_factor < 0:
+            print 'computing cluster profiles...'
+        else:
+            print 'computing smooth cluster profiles...'
+
+        from ..core import debug
+        debug.start_debugging()
+        debug.set_break()
+
+        binSimilarityMatrix = cluster_profiles.compute_cluster_similarity_matrix( self.clusters )
+
+        clusterProfileLabelsDict = {}
+        clusterProfilesDict = {}
+        distanceHeatmapDict = {}
+        similarityHeatmapDict = {}
+        dendrogramDict = {}
+
+        for group_description in group_descriptions:
+            print 'group_description:', group_description
+            groups = grouping.get_groups(group_description, self.pdc, self.clusterCellMask)
+            names,masks = zip(*groups)
+
+            clusterProfileLabels = names
+            clusterProfiles = cluster_profiles.compute_cluster_profiles(
+                masks, self.clusterNormFeatures, self.clusters, exp_factor)
+            print 'clusterProfiles.shape:', clusterProfiles.shape
+
+            normalizationFactor = 0.5
+            distanceHeatmap = cluster_profiles.compute_treatment_distance_map(clusterProfiles, profile_metric, 0.0, binSimilarityMatrix, normalizationFactor)
+            similarityHeatmap = cluster_profiles.compute_treatment_similarity_map(distanceHeatmap, profile_metric)
+            print 'distanceHeatmap.nan:', numpy.sum(numpy.isnan(distanceHeatmap))
+
+            clusterProfileLabelsDict[group_description] = clusterProfileLabels
+            clusterProfilesDict[group_description] = clusterProfiles
+            distanceHeatmapDict[group_description] = distanceHeatmap
+            similarityHeatmapDict[group_description] = similarityHeatmap
+
+            for i in xrange(distanceHeatmap.shape[0]):
+                for j in xrange(i+1, distanceHeatmap.shape[1]):
+                    print '%s->%s:' % (clusterProfileLabels[i], clusterProfileLabels[j]), distanceHeatmap[i,j]
+
+            global has_hcluster
+            if has_hcluster:
+                cdm = distanceHeatmap.copy()
+                mask1 = numpy.isfinite(cdm)[0]
+                mask2 = numpy.isfinite(cdm)[:,0]
+                valid_mask = numpy.logical_or(mask1, mask2)
+                cdm = cdm[valid_mask][:,valid_mask]
+                cdm[numpy.identity(cdm.shape[0], dtype=bool)] = 0.0
+                cdm = hcluster.squareform(cdm)
+                Z = hcluster.linkage(cdm, hcluster_method )
+            else:
+                Z = None
+            dendrogramDict[group_description] = Z
+
+        if cluster_method == 'mahalanobis':
+            for group_description in group_descriptions:
+                print 'Computing mahalanobis distance of %s groups...' % group_description
+                distanceHeatmap = distanceHeatmapDict[group_description]
+                similarityHeatmap = similarityHeatmapDict[group_description]
+                distanceHeatmap = numpy.zeros(distanceHeatmap.shape)
+                similarityHeatmap = numpy.zeros(similarityHeatmap.shape)
+                groups = grouping.get_groups(group_description, self.pdc, self.clusterCellMask)
+                names,masks = zip(*groups)
+                for i,ref_mask in enumerate(masks):
+                    if numpy.any(ref_mask):
+                        ref_points = self.clusterFeatures[ref_mask]
+                        for j,mask in enumerate(masks):
+                            #points = norm_features[mask]
+                            if numpy.any(mask):
+                                points = self.clusterFeatures[mask]
+                                mahal_dist = distance.mahalanobis_distance(ref_points, points, fraction = 0.8)
+                                distanceHeatmap[i,j] = numpy.mean(mahal_dist)
+                            else:
+                                distanceHeatmap[i,j] = numpy.NaN
+                    else:
+                        distanceHeatmap[i,:] = numpy.NaN
+                distanceHeatmapDict[group_description] = distanceHeatmap
+
+        debug.suspend_debugging()
+
+        self.clusterProfileLabelsDict = clusterProfileLabelsDict
+        self.clusterProfilesDict = clusterProfilesDict
+        self.distanceHeatmapDict = distanceHeatmapDict
+        self.similarityHeatmapDict = similarityHeatmapDict
+        self.dendrogramDict = dendrogramDict
+
+        return True
 
     def __partition_along_clusters(self, points, clusterContainer, minkowski_p=2):
         """Partition the samples to the cluster with the minimum distance
@@ -1438,7 +2136,17 @@ class Pipeline(Thread):
             partition = numpy.empty( ( points.shape[0], ), dtype=int )
             partition[ clustered_mask ] = clustered_partition
 
-            partition[ inv_mask ] = cluster.partition_along_clusters( points[ inv_mask ], clustered_points, clustered_partition, clusters )
+            # partition to nearest cluster
+            #
+            # calculate the distance of all the samples to the k-th cluster centroid
+            dist_m = distance.minkowski_cdist( clusters, points[ inv_mask ], minkowski_p )
+            #
+            # find the cluster with the nearest centroid for each sample
+            partition[ inv_mask ] = numpy.argmin( dist_m, 0 )
+    
+
+            # partition by minimizing ESS
+            #partition[ inv_mask ] = cluster.partition_along_clusters( points[ inv_mask ], clustered_points, clustered_partition, clusters )
 
             #partition = cluster.partition_along_clusters( points, clustered_points, clustered_partition, clusters )
 
@@ -1455,109 +2163,161 @@ class Pipeline(Thread):
         return partition
 
 
-    def __compute_cluster_profile(self, points, clusters, exp_factor, minkowski_p=2):
+    #def __compute_cluster_profile(self, points, clusters, exp_factor, minkowski_p=2):
 
-        if points.shape[0] == 0:
-            return numpy.zeros( ( clusters.shape[0], ) )
+        #if points.shape[0] == 0:
+            #return numpy.zeros( ( clusters.shape[0], ) )
 
-        # calculate the distance of all the samples to the k-th cluster centroid.
-        # rows represent clusters, columns represent samples
-        dist_m = distance.minkowski_cdist( clusters, points, minkowski_p )
+        ## calculate the distance of all the samples to the k-th cluster centroid.
+        ## rows represent clusters, columns represent samples
+        #dist_m = distance.minkowski_cdist( clusters, points, minkowski_p )
 
-        #print 'dist_m:', dist_m[ :, 0 ]
+        ##print 'dist_m:', dist_m[ :, 0 ]
 
-        """max = numpy.max( dist_m, axis=0 )
+        #"""max = numpy.max( dist_m, axis=0 )
 
-        sim_m = max - dist_m
+        #sim_m = max - dist_m
 
-        sim_m = sim_m / numpy.float_( numpy.sum( sim_m, axis=0 ) )
+        #sim_m = sim_m / numpy.float_( numpy.sum( sim_m, axis=0 ) )
 
-        sim_m = ( numpy.exp( 2 * sim_m ) - 1 ) / ( numpy.exp( 2 ) - 1 )
+        #sim_m = ( numpy.exp( 2 * sim_m ) - 1 ) / ( numpy.exp( 2 ) - 1 )
 
-        sim_m = sim_m / numpy.float_( numpy.sum( sim_m, axis=0 ) )
-
-        print 'sim_m:', sim_m[ : , 0 ]
-
-        profile = numpy.sum( sim_m, axis=1 )
-
-        print 'sum( profile ):', numpy.sum( profile ), 'sum( sim_m ):', numpy.sum( sim_m ), 'points.shape[0]:', points.shape[0]"""
-
-        """min_i = numpy.argmin( dist_m, axis=0 )
-
-        profile = numpy.empty( ( clusters.shape[0], ) )
-
-        for i in xrange( clusters.shape[0] ):
-            mask = min_i == i
-            profile[ i ] = numpy.sum( mask )
-
-        print 'sum( profile ):', numpy.sum( profile ), 'points.shape[0]:', points.shape[0]"""
-
-        sim_m = 1.0 / dist_m
+        #sim_m = sim_m / numpy.float_( numpy.sum( sim_m, axis=0 ) )
 
         #print 'sim_m:', sim_m[ : , 0 ]
 
-        mask = numpy.isinf( sim_m )
-        col_mask = numpy.any( mask, axis=0 )
+        #profile = numpy.sum( sim_m, axis=1 )
 
-        sim_m[ :, col_mask ] = 0.0
-        sim_m[ mask ] = 1.0
+        #print 'sum( profile ):', numpy.sum( profile ), 'sum( sim_m ):', numpy.sum( sim_m ), 'points.shape[0]:', points.shape[0]"""
 
-        #print 'sum( sim_m ):', numpy.sum( sim_m )
+        #"""min_i = numpy.argmin( dist_m, axis=0 )
 
-        sim_m = sim_m / numpy.max( sim_m )
+        #profile = numpy.empty( ( clusters.shape[0], ) )
 
-        sim_m = ( numpy.exp( exp_factor * sim_m ) - 1 ) / ( numpy.exp( exp_factor ) - 1 )
+        #for i in xrange( clusters.shape[0] ):
+            #mask = min_i == i
+            #profile[ i ] = numpy.sum( mask )
 
-        # normalize the similarity matrix
-        sim_m = sim_m / numpy.sum( sim_m, axis=0 )
+        #print 'sum( profile ):', numpy.sum( profile ), 'points.shape[0]:', points.shape[0]"""
 
-        #print 'sim_m:', sim_m[ : , 0 ]
 
-        #mask = numpy.isnan( sim_m, axis= )
+        #if exp_factor < 0:
+            #argmin = numpy.argmin( dist_m, axis=0 )
+            #profile = numpy.zeros( ( clusters.shape[0], ) )
+            #for i in xrange( clusters.shape[0] ):
+                #profile[ i ] += numpy.sum( argmin == i )
+            #return profile
+
+
+        #sim_m = 1.0 / dist_m
+
+        ##print 'sim_m:', sim_m[ : , 0 ]
+
+        #mask = numpy.isinf( sim_m )
+        #col_mask = numpy.any( mask, axis=0 )
+
+        #sim_m[ :, col_mask ] = 0.0
         #sim_m[ mask ] = 1.0
 
-        profile = numpy.sum( sim_m, axis=1 )
+        ##print 'sum( sim_m ):', numpy.sum( sim_m )
 
-        print 'sum( profile ):', numpy.sum( profile ), 'sum( sim_m ):', numpy.sum( sim_m ), 'points.shape[0]:', points.shape[0]
+        #if exp_factor > 0:
 
-        return profile
+            #sim_m = sim_m / numpy.max( sim_m )
 
-    def __compute_cluster_profiles(self, cell_mask, points, clusters, partition,  exp_factor=10.0):
+            #sim_m = ( numpy.exp( exp_factor * sim_m ) - 1 ) / ( numpy.exp( exp_factor ) - 1 )
 
-        clusterProfiles = numpy.zeros( ( len( self.pdc.treatments ), clusters.shape[0] ) )
+        ## normalize the similarity matrix
+        #sim_m = sim_m / numpy.sum( sim_m, axis=0 )
 
-        if exp_factor > 0:
-            print 'computing smooth cluster profiles...'
-        else:
-            print 'computing cluster profiles...'
+        ##print 'sim_m:', sim_m[ : , 0 ]
 
-        for tr in self.pdc.treatments:
+        ##mask = numpy.isnan( sim_m, axis= )
+        ##sim_m[ mask ] = 1.0
 
-            trMask = self.pdc.objFeatures[ cell_mask ][ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
-            print 'treatment %s: %d' % ( tr.name, numpy.sum( trMask ) )
+        #profile = numpy.sum( sim_m, axis=1 )
 
-            if exp_factor > 0:
+        #print 'sum( profile ):', numpy.sum( profile ), 'sum( sim_m ):', numpy.sum( sim_m ), 'points.shape[0]:', points.shape[0]
 
-                clusterProfiles[ tr.rowId ] = self.__compute_cluster_profile( points[ trMask ], clusters, exp_factor )
+        #return profile
 
-            else:
+    #def compute_cluster_profile(self, points, clusters, exp_factor=10.0, minkowski_p=2):
+        #return self.__compute_cluster_profile( points, clusters, exp_factor, minkowski_p )
 
-                for i in xrange( clusters.shape[0] ):
-                    clusterProfiles[ tr.rowId, i ] = numpy.sum( partition[ trMask ] == i )
+    #def __compute_affinity_profiles(self, masks, points, clusters, minkowski_p):
+        #affinity_profiles = numpy.zeros((len(masks), clusters.shape[0]))
+        ## calculate the distance of all pairs of cluster centroids ...
+        #cluster_dist_m = distance.minkowski_cdist(
+                #clusters, clusters, minkowski_p)
+        ## ... and find the minimum
+        #min_cluster_dist = numpy.min(cluster_dist_m[numpy.invert(
+                #numpy.identity(cluster_dist_m.shape[0], dtype=bool)
+        #)])
+        ## Calculate the distance of all the samples to the k-th cluster
+        ## centroid. Rows represent samples, columns represent clusters.
+        #dist_m = distance.minkowski_cdist(points, clusters, minkowski_p)
+        ## Compute affinity profile for each point and normalize it.
+        #profiles = numpy.exp(-dist_m/min_cluster_dist)
+        #profiles = profiles / numpy.sum(profiles, axis=1)[:,numpy.newaxis]
+        ## Compute the mean affinity profile for each set of points.
+        #for i in xrange(len(masks)):
+            #mask = masks[i]
+            #p = points[mask]
+            #affinity_profiles[i] = numpy.sum(profiles[mask], axis=0) / numpy.sum(mask)
+        #return affinity_profiles
 
-        return clusterProfiles
+    #def compute_cluster_profiles(self, masks, points, clusters,
+                                 #exp_factor=10.0, minkowski_p=2):
+        #"""if exp_factor < 0.0:
+            #return self.__compute_affinity_profiles(
+                        #masks, points, clusters, minkowski_p)
+        #else:"""
+        #if True:
+            #clusterProfiles = numpy.zeros((len(masks), clusters.shape[0]))
+            #for i in xrange( len( masks ) ):
+                #mask = masks[ i ]
+                #p = points[ mask ]
+                #clusterProfiles[ i ] = self.__compute_cluster_profile(
+                        #p, clusters, exp_factor, minkowski_p)
+            #return clusterProfiles
 
-        """"clusterProfiles = numpy.zeros( ( len( self.pdc.treatments ), clusters.shape[0] ) )
+    #def __compute_cluster_profiles(self, cell_mask, points, clusters, partition, exp_factor=10.0, minkowski_p=2):
 
-        for tr in self.pdc.treatments:
+        #clusterProfiles = numpy.zeros( ( len( self.pdc.treatments ), clusters.shape[0] ) )
 
-            trMask = self.pdc.objFeatures[ cell_mask ][ : , self.pdc.objTreatmentFeatureId ] == tr.rowId
-            print 'treatment %s: %d' % ( tr.name, numpy.sum( trMask ) )
+        #if exp_factor < 0:
+            #print 'computing cluster profiles...'
+        #else:
+            #print 'computing smooth cluster profiles...'
 
-            for i in xrange( clusters.shape[0] ):
-                clusterProfiles[ tr.rowId, i ] = numpy.sum( partition[ trMask ] == i )
+        #print 'treatments:', len( self.pdc.treatments )
+        #for tr in self.pdc.treatments:
 
-        return clusterProfiles"""
+            #trMask = self.pdc.objFeatures[ cell_mask ][ : , self.pdc.objTreatmentFeatureId ] == tr.index
+            #print 'treatment %s: %d' % ( tr.name, numpy.sum( trMask ) )
+
+            #if exp_factor < 0:
+
+                #for i in xrange( clusters.shape[0] ):
+                    #clusterProfiles[ tr.index, i ] = numpy.sum( partition[ trMask ] == i )
+
+            #else:
+
+                #clusterProfiles[ tr.index ] = self.__compute_cluster_profile( points[ trMask ], clusters, exp_factor, minkowski_p )
+
+        #return clusterProfiles
+
+    """"clusterProfiles = numpy.zeros( ( len( self.pdc.treatments ), clusters.shape[0] ) )
+    
+    for tr in self.pdc.treatments:
+    
+        trMask = self.pdc.objFeatures[ cell_mask ][ : , self.pdc.objTreatmentFeatureId ] == tr.index
+        print 'treatment %s: %d' % ( tr.name, numpy.sum( trMask ) )
+    
+        for i in xrange( clusters.shape[0] ):
+            clusterProfiles[ tr.index, i ] = numpy.sum( partition[ trMask ] == i )
+    
+    return clusterProfiles"""
 
 
     def compute_feature_importance(self, points, point_mask):
@@ -1605,8 +2365,8 @@ class Pipeline(Thread):
 
     def dissolve_cluster(self, cluster_index):
 
-        clusters = self.nonControlClusters
-        partition = self.nonControlPartition
+        clusters = self.clusters
+        partition = self.partition
         weights = self.nonControlWeights
 
         partition,clusters,weights = self.__dissolve_cluster(
@@ -1639,11 +2399,11 @@ class Pipeline(Thread):
             minkowski_p
         )
 
-        self.nonControlClusters = clusters
-        self.nonControlPartition = partition
+        self.clusters = clusters
+        self.partition = partition
         self.nonControlWeights = weights
-        self.nonControlIntraClusterDistances = intra_cluster_distances
-        self.nonControlInterClusterDistances = inter_cluster_distances
+        self.intraClusterDistances = intra_cluster_distances
+        self.interClusterDistances = inter_cluster_distances
 
 
     def __merge_clusters(self, cluster_index1, cluster_index2, points, partition, clusters, weights):
@@ -1679,8 +2439,8 @@ class Pipeline(Thread):
 
     def merge_clusters(self, cluster_index1, cluster_index2):
 
-        clusters = self.nonControlClusters
-        partition = self.nonControlPartition
+        clusters = self.clusters
+        partition = self.partition
         weights = self.nonControlWeights
 
         partition,clusters,weights = self.__merge_clusters(
@@ -1714,9 +2474,8 @@ class Pipeline(Thread):
             minkowski_p
         )
 
-        self.nonControlClusters = clusters
-        self.nonControlPartition = partition
+        self.clusters = clusters
+        self.partition = partition
         self.nonControlWeights = weights
-        self.nonControlIntraClusterDistances = intra_cluster_distances
-        self.nonControlInterClusterDistances = inter_cluster_distances
-
+        self.intraClusterDistances = intra_cluster_distances
+        self.interClusterDistances = inter_cluster_distances

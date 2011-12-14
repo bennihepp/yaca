@@ -1,9 +1,18 @@
+# -*- coding: utf-8 -*-
+
+"""
+channel_description_widgets.py -- Configuration widget for channel descriptions.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
-
 from ..core import parameter_utils as utils
-
 
 
 class ChannelMappingCombo(QComboBox):

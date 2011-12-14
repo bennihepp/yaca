@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+
+"""
+gallery_window.py -- Cell gallery window.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys, os, random
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -5,16 +16,18 @@ from PyQt4.QtGui import *
 from ..main_gui import TRY_OPENGL
 
 if TRY_OPENGL:
-	from PyQt4.QtOpenGL import *
+    from PyQt4.QtOpenGL import *
 
 from ..gui.gui_utils import ImagePixmapFactory, ImageFeatureTextFactory
+
+from ..core import analyse
+
+from plot_window import PlotWindow
 
 import numpy
 import time
 
 import ImageChops
-
-
 
 class GalleryFeatureSelector(QScrollArea):
 
@@ -63,8 +76,6 @@ class GalleryFeatureSelector(QScrollArea):
         self.setWidget( widget )
 
         self.connect( self.buttonGroup, SIGNAL('buttonClicked(int)'), self.on_feature_selected )
-
-
 
 class GalleryChannelAdjuster(QGroupBox):
 
@@ -233,8 +244,6 @@ class GalleryChannelAdjuster(QGroupBox):
 
         self.setLayout( self.vbox )
 
-
-
 GalleryPixmapAreaBaseClass = QWidget
 if TRY_OPENGL:
     GalleryPixmapAreaBaseClass = QGLWidget
@@ -271,14 +280,14 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
 
     def mouseDoubleClickEvent(self, event):
         btn = event.buttons()
-        if btn == Qt.LeftButton:
+        if btn == Qt.RightButton or btn == Qt.LeftButton:
             x,y = event.x(),event.y()
             x -= self.PIXMAP_SPACING
             y -= self.PIXMAP_SPACING
             column = x / ( self.PIXMAP_SPACING + self.pixmap_width )
             row = y / ( self.PIXMAP_SPACING + self.pixmap_height )
             index = row * self.columns + column
-            self.emit( SIGNAL('pixmapSelected'), index, row, column, event )
+            self.emit( SIGNAL('pixmapSelected'), btn, index, row, column, event )
 
     def set_pixmaps_and_texts(self, rows, columns, pixmaps, focus_index, pixmap_texts):
         self.rows = rows
@@ -295,7 +304,7 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
         self.setMinimumSize( width, height )
         self.setMaximumSize( width, height )
         self.resize( width, height )
-        #print 'updating'
+        print 'updating'
         self.update()
 
     def set_pixmaps(self, rows, columns, pixmaps, focus_index=-1):
@@ -366,9 +375,15 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
                 painter.drawText( boundingRect, Qt.TextSingleLine | Qt.AlignLeft | Qt.AlignTop, text )
 
     def paintEvent(self, event):
-        #print 'paintEvent'
+        print 'paintEvent'
         p = QPainter()
+
+        #import wingdbstub
+        #wingdbstub.debugger.Break()
+
         p.begin( self)
+
+        #wingdbstub.debugger.Break()
 
         self.draw_pixmaps(
             p,
@@ -396,17 +411,18 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
                 index = r * self.columns + c
 
                 if len( self.pixmaps ) > index:
-                
+
                     pixmap = self.pixmaps[ index ]
                     if pixmap != None:
                         self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
-            
+
                     if self.pixmap_texts and len( self.pixmap_texts ) > index:
                         texts = self.pixmap_texts[ index ]
                         if texts != None:
                             self.draw_texts( p, r, c, texts )"""
 
         p.end()
+        print 'finished paint'
 
     def draw_pixmaps(self, painter, width, height, num_of_rows, num_of_columns, pixmaps, pixmap_texts, focus_index=-1, background_color=None):
 
@@ -428,11 +444,11 @@ class GalleryPixmapArea(GalleryPixmapAreaBaseClass):
                 index = r * num_of_columns + c
 
                 if len( pixmaps ) > index:
-                
+
                     pixmap = pixmaps[ index ]
                     if pixmap != None:
                         self.draw_pixmap( p, r, c, pixmap, self.focus_index == index )
-            
+
                     if pixmap_texts and len( pixmap_texts ) > index:
                         texts = pixmap_texts[ index ]
                         if texts != None:
@@ -460,8 +476,10 @@ class GalleryWindow(QWidget):
     TMP_IMAGE_FILENAME_TEMPLATE = TMP_IMAGE_DIRECTORY + '/pdc-tmp-image-file-%s-%s-%s.' + TMP_IMAGE_FILENAME_EXTENSION
 
 
-    def __init__(self, featureDescription, channelMapping, channelDescription, singleImage=False, parent=None):
+    def __init__(self, pipeline, featureDescription, channelMapping, channelDescription, singleImage=False, parent=None):
         super(QWidget,self).__init__(parent)
+
+        self.__pipeline = pipeline
 
         if singleImage:
             self.setWindowTitle('Image Viewer')
@@ -505,7 +523,7 @@ class GalleryWindow(QWidget):
             dialog.setWindowTitle( 'Print cell galleries' )
             if dialog.exec_() != QDialog.Accepted:
                 return
-    
+
             painter = QPainter()
             painter.begin( printer )
 
@@ -528,10 +546,13 @@ class GalleryWindow(QWidget):
 
         #print 'vertical_offset:', vertical_offset, 'top:', bounding_rect.top()
 
-        num_of_rows = int( ( printer.height() + PIXMAP_SPACING ) / float( self.pixmap_height + PIXMAP_SPACING ) )
-        num_of_columns = int( ( printer.width() + PIXMAP_SPACING ) / float( self.pixmap_width + PIXMAP_SPACING ) )
+        #num_of_rows = int( ( printer.height() + PIXMAP_SPACING ) / float( self.pixmap_height + PIXMAP_SPACING ) )
+        #num_of_columns = int( ( printer.width() + PIXMAP_SPACING ) / float( self.pixmap_width + PIXMAP_SPACING ) )
+        num_of_rows = 4
+        num_of_columns = 4
 
-        pixmaps, pixmap_texts = self.__load_random_pixmaps( num_of_rows * num_of_columns )
+        #pixmaps, pixmap_texts = self.__load_random_pixmaps( num_of_rows * num_of_columns )
+        pixmaps, pixmap_texts = self.__load_pixmaps( num_of_rows * num_of_columns )
 
         painter.save()
 
@@ -568,6 +589,26 @@ class GalleryWindow(QWidget):
         if c2 == 'B': return +1
         return cmp( c1, c2 )
 
+    def update_tabs(self, tabs):
+        for tabIndex in self.userTabIndices:
+            self.tabWidget.removeTab( tabIndex )
+        self.userTabIndices = []
+        for tab,caption in tabs:
+            self.userTabIndices.append( self.tabWidget.addTab( tab, caption ) )
+
+    def update_feature_description(self, featureDescription):
+        if featureDescription != self.featureDescription:
+            self.featureDescription = featureDescription
+            i = self.tabWidget.indexOf( self.featureSelector )
+            self.tabWidget.removeTab( i )
+
+            self.disconnect( self.featureSelector, SIGNAL('selectedFeaturesChanged'), self.on_selected_features_changed )
+            del self.featureSelector
+            self.featureSelector = GalleryFeatureSelector( self.featureDescription )
+            self.connect( self.featureSelector, SIGNAL('selectedFeaturesChanged'), self.on_selected_features_changed )
+
+            self.tabWidget.insertTab( i, self.featureSelector, 'Features' )
+
     def on_selection_changed(self, focusId, selectionIds, pixmapFactory, featureFactory):
 
         self.focusId = focusId
@@ -601,30 +642,30 @@ class GalleryWindow(QWidget):
 
     def load_cell_image(self, imageId):
         img = self.pixmapFactory.createImage(
-                                imageId,
-                                -1,
-                                -1,
-                                self.pixmap_width,
-                                self.pixmap_height,
-                                self.channelAdjustment,
-                                self.color,
-                                self.imageCache,
-                                int( imageId )
+            imageId,
+            -1,
+            -1,
+            self.pixmap_width,
+            self.pixmap_height,
+            self.channelAdjustment,
+            self.color,
+            self.imageCache,
+            int( imageId )
         )
         name = 'CellsObjects'
         img_mask = self.pixmapFactory.createImageMask(
-                                imageId,
-                                name,
-                                -1,
-                                -1,
-                                self.pixmap_width,
-                                self.pixmap_height,
-                                self.imageCache,
-                                int( imageId )
+            imageId,
+            name,
+            -1,
+            -1,
+            self.pixmap_width,
+            self.pixmap_height,
+            self.imageCache,
+            int( imageId )
         )
         return ImageChops.darker( img, img_mask )
 
-    def on_pixmap_selected(self, index, row, column, event):
+    def on_pixmap_selected(self, btn, index, row, column, event):
         if not self.singleImage:
             try:
                 self.singleImageViewer
@@ -635,35 +676,95 @@ class GalleryWindow(QWidget):
 
             # TODO: this is very dirty
             imgId = int( self.pixmapFactory.features[ self.selectionIds[ self.idMapping[ self.start_i + index ] ] , pdc.objImageFeatureId ] )
-            selectionIds = numpy.array( [ imgId ] )
-            focusId = selectionIds[ 0 ]
 
-            pixmapFactory = ImagePixmapFactory( pdc, self.channelMapping )
-            featureFactory = ImageFeatureTextFactory( pdc )
+            if btn == Qt.RightButton:
 
-            if self.singleImageViewer == None:
-                self.singleImageViewer = GalleryWindow(
-                                            pdc.imgFeatureIds,
-                                            self.channelMapping,
-                                            self.channelDescription,
-                                            True
-                )
+                selectionIds = numpy.array( [ imgId ] )
+                focusId = selectionIds[ 0 ]
 
-            self.singleImageViewer.on_selection_changed(
+                pixmapFactory = ImagePixmapFactory( pdc, self.channelMapping )
+                featureFactory = ImageFeatureTextFactory( pdc )
+
+                if self.singleImageViewer == None:
+                    self.singleImageViewer = GalleryWindow(
+                        pdc.imgFeatureIds,
+                        self.channelMapping,
+                        self.channelDescription,
+                        True
+                    )
+
+                self.singleImageViewer.on_selection_changed(
                     focusId,
                     selectionIds,
                     pixmapFactory,
                     featureFactory
-            )
-            self.singleImageViewer.showMaximized()
+                )
+                self.singleImageViewer.showMaximized()
+
+            elif btn == Qt.LeftButton:
+                try:
+                    self.__plot_window
+                except:
+                    self.__plot_window = PlotWindow( show_toolbar=True )
 
 
-    def __load_random_pixmaps(self, num_of_pixmaps):
+            featureIds = []
+            for featureName in analyse.filter_obj_feature_id_names:
+                featureIds.append( pdc.objFeatureIds[ featureName ] )
+            featureIds = numpy.array( featureIds )
+            #print analyse.filter_obj_feature_id_names
+            #print featureIds
+
+            try:
+                mean_features
+            except:
+                features = self.__pipeline.pdc.objFeatures[ self.__pipeline.get_valid_cell_mask() ][ : , featureIds ]
+
+                # calculate standard-deviations
+                stddev = numpy.std( features, axis=0 )
+                # calculate means
+                mean = numpy.mean( features, axis=0 )
+                # calculate the normalized features
+                norm_features = ( features - mean ) / stddev
+                # create a mask of valid features
+                nan_mask = numpy.isnan( norm_features )
+                inf_mask = numpy.isinf( norm_features )
+                invalid_mask = numpy.logical_or( nan_mask, inf_mask )
+                invalid_mask = numpy.any( invalid_mask, axis=0 )
+                valid_mask = numpy.logical_not( invalid_mask )
+                # only keep valid features
+                #print valid_mask
+                #print valid_mask.shape
+                #print norm_features.shape
+                norm_features = norm_features[ : , valid_mask ]
+                mean_features = numpy.mean( norm_features, axis=0 )
+
+            values = self.__pipeline.pdc.objFeatures[ self.selectionIds[ self.idMapping[ self.start_i + index ] ], : ][ : , featureIds ]
+            values = ( values - mean ) / stddev
+            values = values[ valid_mask ]
+            feature_dev = values - mean_features
+            #print feature_dev
+
+            featureIds = featureIds[ valid_mask ]
+            x = numpy.arange( featureIds.shape[0] )
+            x_labels = []
+            for i in featureIds:
+                name = None
+                for n,j in self.__pipeline.pdc.objFeatureIds.iteritems():
+                    if i == j:
+                        name = n
+                        break
+                x_labels.append( name )
+            self.__plot_window.draw_barplot( 0, 'Feature deviation from mean', feature_dev, x, x_labels, facecolor='blue' )
+            self.__plot_window.show()
+
+
+    def __load_pixmaps(self, num_of_pixmaps, random=False):
 
         if self.selectionIds == None:
             return
 
-        if not self.random:
+        if random and not self.random:
             mapping = list( self.idMapping )
             random.shuffle( mapping )
         else:
@@ -679,14 +780,14 @@ class GalleryWindow(QWidget):
 
                 cacheId = int( self.selectionIds[ pixmapId ] )
                 pix = self.pixmapFactory.createPixmap(
-                                self.selectionIds[ pixmapId ],
-                                -1,
-                                -1,
-                                self.pixmap_width,
-                                self.pixmap_height,
-                                self.channelAdjustment,
-                                self.color,
-                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) )
+                    self.selectionIds[ pixmapId ],
+                    -1,
+                    -1,
+                    self.pixmap_width,
+                    self.pixmap_height,
+                    self.channelAdjustment,
+                    self.color,
+                    self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) )
                 )
 
                 if pix:
@@ -788,15 +889,15 @@ class GalleryWindow(QWidget):
                 #print 'creating pixmap %d -> %d' % ( pixmapId, self.selectionIds[ pixmapId ] )
 
                 pix = self.pixmapFactory.createPixmap(
-                                self.selectionIds[ pixmapId ],
-                                -1,
-                                -1,
-                                self.pixmap_width,
-                                self.pixmap_height,
-                                self.channelAdjustment,
-                                self.color,
-                                self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) ),
-                                self.imageCache
+                    self.selectionIds[ pixmapId ],
+                    -1,
+                    -1,
+                    self.pixmap_width,
+                    self.pixmap_height,
+                    self.channelAdjustment,
+                    self.color,
+                    self.tmp_image_filename % ( str( self.tmp_image_filename_rnd ), str( cacheId ), str( time.time() ) ),
+                    self.imageCache
                 )
 
                 #print id(pix)
@@ -914,21 +1015,21 @@ class GalleryWindow(QWidget):
                     #del img
                     #del tmp
                     #qtimg = ImageQt.ImageQt(img2)
-                    
+
                     #rect = rectSelector(selectionIds[i])
                     #tmp = QImage(filename)
                     #qtimg = tmp.copy(rect[0], rect[1], rect[2]-rect[0], rect[3]-rect[1])
                     #del tmp
-    
+
                     #pix = QPixmap.fromImage(qtimg)
                     #pix.save('/home/benjamin/tmp_pix.png')
                     #del qtimg
-    
+
                     #rect = rectSelector(selectionIds[i])
                     #tmp = QPixmap(filename)
                     #pix = tmp.copy(rect[0], rect[1], rect[2]-rect[0], rect[3]-rect[1])
                     #del tmp
-    
+
                     pix = QPixmap(self.tmp_image_filename)
                     print '<10>'
                     self.pixmaps.append(pix)
@@ -1252,12 +1353,13 @@ class GalleryWindow(QWidget):
         #channelScrollArea.setHorizontalScrollBarPolicy( Qt.ScrollBarAlwaysOff )
         channelScrollArea.setWidget( channelWidgets )
 
-        featureSelector = GalleryFeatureSelector( self.featureDescription )
-        self.connect( featureSelector, SIGNAL('selectedFeaturesChanged'), self.on_selected_features_changed )
+        self.featureSelector = GalleryFeatureSelector( self.featureDescription )
+        self.connect( self.featureSelector, SIGNAL('selectedFeaturesChanged'), self.on_selected_features_changed )
 
-        tabWidget = QTabWidget()
-        tabWidget.addTab( channelScrollArea, 'Channels' )
-        tabWidget.addTab( featureSelector, 'Features' )
+        self.tabWidget = QTabWidget()
+        self.tabWidget.addTab( channelScrollArea, 'Channels' )
+        self.tabWidget.addTab( self.featureSelector, 'Features' )
+        self.userTabIndices = []
 
         hsplitter = QSplitter()
         hbox2 = QHBoxLayout()
@@ -1269,7 +1371,7 @@ class GalleryWindow(QWidget):
             hsplitter.addWidget( self.pixmaparea )
         hsplitter.setStretchFactor( 0, 1 )
 
-        hsplitter.addWidget( tabWidget )
+        hsplitter.addWidget( self.tabWidget )
         hsplitter.setStretchFactor( 1, 0 )
 
         self.statusbar = QStatusBar()
@@ -1298,4 +1400,3 @@ class GalleryWindow(QWidget):
             self.column_box.setValue(self.columns)
 
         self.random_box.setCheckState(False)
-

@@ -1,7 +1,30 @@
+# -*- coding: utf-8 -*-
+
+"""
+thread_utils.py -- Thread wrapper and utilities.
+
+This class provides a wrapper around the Qt Thread class QThread when available and otherwise
+defines a stub implementation so that it can be used in headless mode.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys
 import traceback
 
+import debug
+
 class AbstractThreadBase(object):
+    
+    __thread_support__ = False
+
+    @classmethod
+    def thread_support(cls):
+        return cls.__thread_support__
+
     def start_method(self, method, *args):
         """Run a method within the thread
     
@@ -24,9 +47,12 @@ class AbstractThreadBase(object):
         self.wait()
 
         if self.__exception != None:
-            print 'An exception was raised in a running thread:'
-            print self.__traceback
-            return False
+            #print 'An exception was raised in a running thread:'
+            sys.stderr.write( self.__traceback )
+            sys.stderr.flush()
+            #print self.__traceback
+            raise Exception( 'An exception was raised in a running thread:' )
+            #return False
             #raise self.__exception
 
         return True
@@ -44,8 +70,11 @@ class AbstractThreadBase(object):
             try:
                 self.__result = self.__thread_method( *self.__thread_args )
             except Exception,e:
-                self.__exception = e
-                self.__traceback = traceback.format_exc()
+                if debug.is_debugging():
+                    raise
+                else:
+                    self.__exception = e
+                    self.__traceback = traceback.format_exc()
 
     def get_result(self):
         """Return the result, that was returned by the last thread method
@@ -57,13 +86,16 @@ class AbstractThreadBase(object):
 
 
 
-if 'PyQt4.QtCore' in sys.modules:
+if 'PyQt4.QtCore' in sys.modules and not debug.is_debugging():
     from PyQt4.QtCore import *
 
     class Thread(QThread, AbstractThreadBase):
 
-        def __init__(self):
-            QThread.__init__( self )
+        __thread_support__ = True
+
+        def __init__(self, *args, **kwargs):
+            super(Thread, self).__init__(*args, **kwargs)
+            #QThread.__init__( self )
             self.mutex = QMutex()
             self.stop_running = False
 
@@ -85,7 +117,10 @@ else:
 
     class Thread(AbstractThreadBase):
 
-        def __init__(self):
+        __thread_support__ = False
+
+        def __init__(self, *args, **kwargs):
+            super(Thread, self).__init__(*args, **kwargs)
             self.__slots = {}
             self.stop_running = False
 
@@ -107,6 +142,10 @@ else:
             if not signal in self.__slots:
                 self.__slots[ signal ] = []
             self.__slots[ signal ].append( slot )
+
+        def disconnect(self, obj, signal, slot):
+            if signal in self.__slots:
+                self.__slots[signal].remove(slot)
 
         def emit(self, signal, *args):
             if signal in self.__slots:

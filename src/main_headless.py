@@ -2,6 +2,17 @@ import sys, os
 
 
 
+from PyQt4.QtCore import *
+
+
+from . core import pipeline
+from . core import importer
+from . core import headless_cluster_configuration
+
+from . core import parameter_utils as utils
+
+
+
 project_file = None
 img_symlink_dir = False
 
@@ -11,6 +22,7 @@ clustering_param1 = 100
 clustering_param2 = -1
 clustering_param3 = 2
 clustering_param4 = 20
+filter_mode = pipeline.analyse.FILTER_MODE_MEDIAN_xMAD
 
 skip_next = 0
 
@@ -56,19 +68,38 @@ if len( sys.argv ) > 1:
             skip_next = 1
         elif arg == '--clustering-method':
             clustering_method = next_arg
+            skip_next = 1
         elif arg == '--clustering-index':
             clustering_index = int( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param1':
             clustering_param1 = int( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param2':
             clustering_param2 = int( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param3':
             clustering_param3 = int( next_arg )
+            skip_next = 1
         elif arg == '--clustering-param4':
             clustering_param4 = int( next_arg )
+            skip_next = 1
         elif arg == '--project-file':
             project_file = next_arg
             skip_next = 1
+        elif arg == '--filter-mode':
+            control_filter_mode = next_arg
+            skip_next = 1
+            if control_filter_mode == 'MEDIAN_xMAD':
+                filter_mode = pipeline.analyse.FILTER_MODE_MEDIAN_xMAD
+            elif control_filter_mode == 'xMEDIAN':
+                filter_mode = pipeline.analyse.FILTER_MODE_xMEDIAN
+            elif control_filter_mode == 'MEDIAN_xMAD_AND_LIMIT':
+                filter_mode = pipeline.analyse.FILTER_MODE_MEDIAN_xMAD_AND_LIMIT
+            elif control_filter_mode == 'xMEDIAN_AND_LIMIT':
+                filter_mode = pipeline.analyse.FILTER_MODE_xMEDIAN_AND_LIMIT
+            else:
+                raise Exception( 'Unknown control filter mode: %s' % control_filter_mode )
         elif arg == '--help':
             print_help()
             sys.exit( 0 )
@@ -81,17 +112,6 @@ if project_file == None:
     print 'YACA project file needs to be specified...'
     print_help()
     sys.exit( -1 )
-
-
-
-from PyQt4.QtCore import *
-
-
-from . core import pipeline
-from . core import importer
-from . core import headless_cluster_configuration
-
-from . core import parameter_utils as utils
 
 
 
@@ -138,7 +158,7 @@ sys.stdout.write( '\n' )
 sys.stdout.flush()
 
 print '\nRunning pre filtering...'
-pl.start_pre_filtering()
+pl.start_pre_filtering( filter_mode )
 
 pl.wait()
 

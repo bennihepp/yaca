@@ -1,12 +1,30 @@
+# -*- coding: utf-8 -*-
+
+"""
+cluster.py -- Data clustering.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys
+import os
 
 import numpy
 import scipy.spatial
 
+import h5py
+
 import distance
 
-import hcluster as hc
-
+has_hcluster = False
+try:
+    import hcluster as hc
+    has_hcluster = True
+except:
+    pass
 
 CLUSTER_METHOD_KMEANS = 0
 CLUSTER_METHOD_KMEDIANS = 1
@@ -14,17 +32,47 @@ CLUSTER_METHOD_KMEDOIDS = 2
 
 def do_hcluster(method, points, id, minkowski_p=2):
 
-    PATH = '/g/pepperkok/hepp/hcluster/'
+    print 'do_hcluster():', method
 
-    import pickle
+    PATH = '/g/pepperkok/hepp/lab_meeting/results/hcluster_clustering/'
+    hcluster_Z_file_template = 'hcluster_Z_method=%s_id=%d_minkowski-p=%d_points-shape=(%d_%d).hdf5'
 
+
+    f = None
     try:
+        f = h5py.File( os.path.join( PATH, hcluster_Z_file_template % ( method, id, minkowski_p, points.shape[0], points.shape[1] ) ), mode='r' )
+        root = f[ 'hcluster_results' ]
 
-        file = open( PATH+'hcluster_Z_%s_%d_%d.pic' % ( method, minkowski_p, id ), 'r' )
-        Z = pickle.load( file )
-        file.close()
+        print 'reading hclustering results from hdf5...'
 
-    except:
+        file_method = root.attrs[ 'method' ]
+        file_id = root.attrs[ 'id' ]
+        file_minkowski_p = root.attrs[ 'minkowski_p' ]
+        points_shape = list( root.attrs[ 'points_shape' ] )
+
+        #print ( points.shape != points_shape )
+        #sys.stdout.write( '%s, %s, %s, %s\n' % ( points.shape, method, id, minkowski_p ) )
+        #sys.stdout.write( '%s, %s, %s\n' % ( file_method, file_id, minkowski_p ) )
+        #sys.stdout.flush()
+
+        #if points.shape != points_shape:
+        #    raise Exception( 'Invalid hcluster_results hdf5 file: points.shape does not match' )
+        #if method != file_method:
+        #    raise Exception( 'Invalid hcluster_results hdf5 file: method does not match' )
+        #if id != file_id:
+        #    raise Exception( 'Invalid hcluster_results hdf5 file: id does not match' )
+        #if minkowski_p != file_minkowski_p:
+        #    raise Exception( 'Invalid hcluster_results hdf5 file: minkowski_p does not match' )
+
+        Z_dataset = root[ 'Z' ]
+        Z = numpy.empty( Z_dataset.shape )
+        Z_dataset.read_direct( Z )
+
+    except Exception as e:
+
+        print e
+        sys.stdout.write( 'e: %s\n' % str( e ) )
+        sys.stdout.flush()
 
         if method in [ 'single','complete','average','weighted' ]:
             print 'computing distances...'
@@ -41,13 +89,46 @@ def do_hcluster(method, points, id, minkowski_p=2):
         Z = hc.linkage( dist_m, method )
         print 'done'
 
-        file = open( PATH+'hcluster_%s_%d_%d.pic' % ( method, minkowski_p, id ), 'w' )
-        pickle.dump( [ points, dist_m, Z ], file )
-        file.close()
-    
-        file = open( PATH+'hcluster_Z_%s_%d_%d.pic' % ( method, minkowski_p, id ), 'w' )
-        pickle.dump( Z, file )
-        file.close()
+        del dist_m
+
+        f = None
+        try:
+            print 'writing hclustering results to hdf5...'
+            f = h5py.File( os.path.join( PATH, hcluster_Z_file_template % ( method, id, minkowski_p, points.shape[0], points.shape[1] ) ), mode='w' )
+            root = f.create_group( 'hcluster_results' )
+
+            root.attrs[ 'method' ] = method
+            root.attrs[ 'id' ] = id
+            root.attrs[ 'minkowski_p' ] = minkowski_p
+            root.attrs[ 'points_shape' ] = list( points.shape )
+
+            Z_dataset = root.create_dataset( 'Z', data=Z )
+
+        finally:
+            if f:
+                f.close()
+
+        """f = None
+        try:
+            print 'writing points and hclustering results to hdf5...'
+            f = h5py.File( os.path.join( PATH, 'hcluster_%s_%d_%d.hdf5' % ( method, minkowski_p, id ) ), mode='w' )
+            root = f.create_group( 'hcluster_results' )
+
+            root.attrs[ 'method' ] = method
+            root.attrs[ 'id' ] = id
+            root.attrs[ 'minkowski_p' ] = minkowski_p
+
+            Z_dataset = root.create_dataset( 'Z', data=Z )
+
+            points_dataset = root.create_dataset( 'points', data=points )
+
+        finally:
+            if f:
+                f.close()"""
+
+    finally:
+        if f:
+            f.close()
 
     return Z
 
@@ -66,7 +147,8 @@ def get_hcluster_methods():
         ( 'HCentroid', 'centroid' ),
         ( 'K-Means', 'k-means' ),
         ( 'K-Medians', 'k-medians' ),
-        ( 'K-Medoids', 'k-medoids' )
+        ( 'K-Medoids', 'k-medoids' ),
+        ( 'Mahalanobis', 'mahalanobis' )
     ]
 
 
@@ -92,19 +174,19 @@ def __kd_tree(points, ids, depth, max_depth, partition):
         node.dim = dim
 
         points_dim = points[ :, dim ]
-    
+
         #masked_ids = ids[ mask ]
         #masked_points = points[ mask ]
-    
+
         sorted_arg = numpy.argsort( points_dim )
         median_id = sorted_arg[ sorted_arg.shape[0] / 2 ]
         #abs_median_id = ids[ median_id ]
-    
+
         node.value = points_dim[ median_id ]
-    
+
         left_mask = points_dim < node.value
         right_mask = points_dim >= node.value
-    
+
         if ( numpy.sum( left_mask ) == 0 ) or ( numpy.sum( right_mask ) == 0 ):
 
             print 'increasing max_depth for dimension %d' % dim
@@ -153,7 +235,7 @@ def __partition_along_kd_tree(node, points, ids, depth):
 
     left_mask = points_dim < node.value
     right_mask = points_dim >= node.value
-    
+
     if node.left != None and node.right != Nonde:
 
         __partition_along_kd_tree( node.left, points[ left_mask ], ids[ left_mask ], depth+1 )
@@ -191,6 +273,8 @@ def sample_random_points(observations, num_of_points):
 
 def hcluster_special(method, points, param1, param2, param3, id ,minkowski_p):
 
+    print 'hcluster_special():', method
+
     if method == 'seed':
         print 'using %d seeds' % param1
         Z = __cluster_hierarchical_seeds( points, param1, points.shape[0], minkowski_p )
@@ -218,61 +302,20 @@ def hcluster_special(method, points, param1, param2, param3, id ,minkowski_p):
     new_Z[:,:4] = Z
     Z = new_Z
 
-    partition = numpy.arange( ( points.shape[0] ) )
+    print 'scanning clustering (param1=%d, param3=%d)...' % ( param1, param3 )
 
-    print 'scanning clustering (param2=%d, param3=%d)...' % ( param2, param3 )
-
-    """devs = -1 * numpy.ones( ( 2*points.shape[0], ) )
-
-    ESS = 0.0
-    centroids = numpy.empty( ( 2*points.shape[0], points.shape[1] ) )
-    centroids[ : points.shape[0] ] = points
-    ESS_array = numpy.zeros( ( 2*points.shape[0], ) )
-    for i in xrange( Z.shape[0] ):
-        index1, index2, dist, count = Z[ i, :4 ]
-        #if dist > dist_threshold:
-        #    break
-        new_index = i + points.shape[0]
-        #print 'i=%d, index1=%d, index2=%d, new_index=%d, dist=%f, count=%d' % ( i, index1,index2,new_index,dist,count )
-        mask1 = partition[:] == index1
-        mask2 = partition[:] == index2
-        mask = numpy.logical_or( mask1, mask2 )
-        partition[ mask ] = new_index
-        devs[ new_index ] = numpy.sum( numpy.std( points[ mask ], axis=0 ) ** 2 )
-        devs[ index1 ] = 0.0
-        devs[ index2 ] = 0.0
-        dev = numpy.sum( devs )
-        dev_mask = devs > 0.0
-        dev = numpy.sum( devs[ dev_mask ] )
-        dev_count = numpy.sum( dev_mask )
-        Z[i,4] = dev
-        if dev_count > 0:
-            Z[i,5] = dev / float( dev_count )
-        else:
-            Z[i,5] = -1.0
-        Z[i,6] = dev_count
-        centroids[ new_index ] = ( numpy.sum( mask1 ) * centroids[ index1 ] + numpy.sum( mask2 ) * centroids[ index2 ] ) / numpy.sum( mask )
-        dist = distance.minkowski_dist( centroids[ new_index ], points[ mask ] )
-        dESS = - ESS_array[ index1 ] - ESS_array[ index2 ] + numpy.sum( dist ** 2 )
-        ESS += dESS
-        Z[i,4] = points.shape[0] - i - 1
-        Z[i,5] = ESS ** 2
-        Z[i,7] = ESS ** 2 * ( points.shape[0] - i - 1 )
-
-    print 'Z[-10:,4]:', Z[-10:,4]"""
+    #devs = -1 * numpy.ones( ( 2*points.shape[0], ) )
 
     partition = numpy.arange( ( points.shape[0] ) )
+
     part_of_big_cluster = numpy.zeros( ( points.shape[0], ), dtype=bool )
     num_of_big_clusters = 0
-    num_of_clusters = points.shape[0]
 
-    max_num_of_big_clusters = 0
-    max_partition = None
-
-    if param2 == -1:
-        param2 = 1
-
-    for i in xrange( Z.shape[0] ):
+    #ESS = 0.0
+    #centroids = numpy.empty( ( 2*points.shape[0], points.shape[1] ) )
+    #centroids[ : points.shape[0] ] = points
+    #ESS_array = numpy.zeros( ( 2*points.shape[0], ) )
+    for i in xrange(Z.shape[0] - param1 + 1):
         index1, index2, dist, count = Z[ i, :4 ]
         #if dist > dist_threshold:
         #    break
@@ -281,74 +324,188 @@ def hcluster_special(method, points, param1, param2, param3, id ,minkowski_p):
         mask1 = partition[:] == index1
         mask2 = partition[:] == index2
         mask = numpy.logical_or( mask1, mask2 )
-
-        if numpy.sum( mask ) != count:
-            print 'count=%d   !=   numpy.sum(mask)=%d' % ( count, numpy.sum( mask ) )
-
-        already_big_cluster1 = numpy.any( part_of_big_cluster[ mask1 ] )
-        already_big_cluster2 = numpy.any( part_of_big_cluster[ mask2 ] )
-        already_big_cluster = already_big_cluster1 or already_big_cluster2
-
-        num_of_clusters -= 1
-
-        prev_num_of_big_clusters = num_of_big_clusters
-
-        if not already_big_cluster:
-            if numpy.sum( mask ) >= param3:
-                already_big_cluster = True
-                num_of_big_clusters += 1
-                print 'new:', numpy.sum( mask ), num_of_big_clusters, numpy.sum( mask1 ), numpy.sum( mask2 )
-
-        if already_big_cluster:
-            part_of_big_cluster[ mask ] = True
-
-        if already_big_cluster1 and already_big_cluster2:
-            num_of_big_clusters -= 1
-
-        if num_of_big_clusters < prev_num_of_big_clusters:
-            if prev_num_of_big_clusters > max_num_of_big_clusters and prev_num_of_big_clusters <= param2:
-                max_partition = partition.copy()
-                max_num_of_big_clusters = prev_num_of_big_clusters
-
         partition[ mask ] = new_index
+        #devs[ new_index ] = numpy.sum( numpy.std( points[ mask ], axis=0 ) ** 2 )
+        #devs[ index1 ] = 0.0
+        #devs[ index2 ] = 0.0
+        #dev = numpy.sum( devs )
+        #dev_mask = devs > 0.0
+        #dev = numpy.sum( devs[ dev_mask ] )
+        #dev_count = numpy.sum( dev_mask )
+        #Z[i,4] = dev
+        #if dev_count > 0:
+        #    Z[i,5] = dev / float( dev_count )
+        #else:
+        #    Z[i,5] = -1.0
+        #Z[i,6] = dev_count
+        #centroids[ new_index ] = ( numpy.sum( mask1 ) * centroids[ index1 ] + numpy.sum( mask2 ) * centroids[ index2 ] ) / numpy.sum( mask )
+        #dist = distance.minkowski_dist( centroids[ new_index ], points[ mask ] )
+        #dESS = - ESS_array[ index1 ] - ESS_array[ index2 ] + numpy.sum( dist ** 2 )
+        #ESS += dESS
+        #Z[i,4] = points.shape[0] - i - 1
+        #num_of_big_clusters = 0
+        #for j in xrange( numpy.max( partition ) + 1 ):
+        #    m = partition == j
+        #    if numpy.sum( m ) >= param3:
+        #        num_of_big_clusters += 1
+        #Z[i,5] = num_of_big_clusters
+        #Z[i,5] = ESS ** 2
+        #Z[i,7] = ESS ** 2 * ( points.shape[0] - i - 1 )
+        #already_big_cluster1 = numpy.any( part_of_big_cluster[ mask1 ] )
+        #already_big_cluster2 = numpy.any( part_of_big_cluster[ mask2 ] )
+        #already_big_cluster = already_big_cluster1 or already_big_cluster2
+        #if not already_big_cluster:
+            #if numpy.sum( mask ) >= param3:
+                #already_big_cluster = True
+                #num_of_big_clusters += 1
+        #if already_big_cluster:
+            #part_of_big_cluster[ mask ] = True
+        #if already_big_cluster1 and already_big_cluster2:
+            #num_of_big_clusters -= 1
+        #Z[i,5] = num_of_big_clusters
 
-        if num_of_big_clusters >= param2:
-            print 'break <1> at num_of_big_clusters=%d, num_of_clusters=%d' % ( num_of_big_clusters, num_of_clusters )
-            break
+    oldPartition = partition
+    partition = -numpy.ones(oldPartition.shape, dtype=int)
+    for i,index in enumerate(numpy.unique(oldPartition)):
+        mask = oldPartition == index
+        partition[mask] = i
 
-        if num_of_clusters <= param2:
-            print 'break <2> at num_of_big_clusters=%d, num_of_clusters=%d' % ( num_of_big_clusters, num_of_clusters )
-            break
+    clusters = compute_centroids_from_partition(points, partition)
 
-        #if numpy.all( part_of_big_cluster ):
-        #    break
+    return partition, clusters, Z
 
-    if max_num_of_big_clusters > num_of_big_clusters:
-        partition = max_partition
 
-    print 'done'
+    #print 'Z[-10:,4]:', Z[-10:,4]
 
-    print 'min=%d, max=%d' % ( numpy.min( partition ), numpy.max( partition ) )
+    if param2 < 0:
 
-    new_partition = -1 * numpy.ones( ( points.shape[0], ), dtype=int )
-    """partition_ids = numpy.zeros( ( numpy.max( partition ) + 1, ), dtype=bool )
-    n = 0
-    for i in xrange( partition.shape[0] ):
-        partition_id = partition[ i ]
-        if not partition_ids[ partition_id ]:
-            partition_ids[ partition_id ] = True
-            mask = partition[:] == partition_id
-            new_partition[ mask ] = n
-            n += 1"""
+        partition = numpy.arange( ( points.shape[0] ) )
+        part_of_big_cluster = numpy.zeros( ( points.shape[0], ), dtype=bool )
+        num_of_big_clusters = 0
+        num_of_clusters = points.shape[0]
 
-    n = 0
-    for i in xrange( numpy.max( partition ) + 1 ):
-        mask = partition == i
-        if numpy.sum( mask ) > 0:
-            new_partition[ mask ] = n
-            n += 1
+        max_num_of_big_clusters = 0
+        max_partition = None
 
-    partition = new_partition
+        if param1 == -1:
+            param1 = 1
+
+        for i in xrange( Z.shape[0] ):
+            index1, index2, dist, count = Z[ i, :4 ]
+            #if dist > dist_threshold:
+            #    break
+            new_index = i + points.shape[0]
+            #print 'i=%d, index1=%d, index2=%d, new_index=%d, dist=%f, count=%d' % ( i, index1,index2,new_index,dist,count )
+            mask1 = partition[:] == index1
+            mask2 = partition[:] == index2
+            mask = numpy.logical_or( mask1, mask2 )
+
+            if numpy.sum( mask ) != count:
+                print 'count=%d   !=   numpy.sum(mask)=%d' % ( count, numpy.sum( mask ) )
+
+            already_big_cluster1 = numpy.any( part_of_big_cluster[ mask1 ] )
+            already_big_cluster2 = numpy.any( part_of_big_cluster[ mask2 ] )
+            already_big_cluster = already_big_cluster1 or already_big_cluster2
+
+            num_of_clusters -= 1
+
+            prev_num_of_big_clusters = num_of_big_clusters
+
+            if not already_big_cluster:
+                if numpy.sum( mask ) >= param3:
+                    already_big_cluster = True
+                    num_of_big_clusters += 1
+                    print 'new:', numpy.sum( mask ), num_of_big_clusters, numpy.sum( mask1 ), numpy.sum( mask2 )
+
+            if already_big_cluster:
+                part_of_big_cluster[ mask ] = True
+
+            if already_big_cluster1 and already_big_cluster2:
+                num_of_big_clusters -= 1
+
+            if num_of_big_clusters < prev_num_of_big_clusters:
+                if prev_num_of_big_clusters > max_num_of_big_clusters and prev_num_of_big_clusters <= param1:
+                    max_partition = partition.copy()
+                    max_num_of_big_clusters = prev_num_of_big_clusters
+
+            partition[ mask ] = new_index
+
+            if num_of_big_clusters >= param1:
+                print 'break <1> at num_of_big_clusters=%d, num_of_clusters=%d, i=%d' % ( num_of_big_clusters, num_of_clusters, i )
+                break
+
+            if num_of_clusters <= param1:
+                print 'break <2> at num_of_big_clusters=%d, num_of_clusters=%d, i=%d' % ( num_of_big_clusters, num_of_clusters, i )
+                break
+
+            #if numpy.all( part_of_big_cluster ):
+            #    break
+
+        if max_num_of_big_clusters > num_of_big_clusters:
+            partition = max_partition
+
+        print 'done'
+
+        print 'min=%d, max=%d' % ( numpy.min( partition ), numpy.max( partition ) )
+
+        new_partition = -1 * numpy.ones( ( points.shape[0], ), dtype=int )
+        """partition_ids = numpy.zeros( ( numpy.max( partition ) + 1, ), dtype=bool )
+        n = 0
+        for i in xrange( partition.shape[0] ):
+            partition_id = partition[ i ]
+            if not partition_ids[ partition_id ]:
+                partition_ids[ partition_id ] = True
+                mask = partition[:] == partition_id
+                new_partition[ mask ] = n
+                n += 1"""
+
+        n = 0
+        for i in xrange( numpy.max( partition ) + 1 ):
+            mask = partition == i
+            if numpy.sum( mask ) > 0:
+                new_partition[ mask ] = n
+                n += 1
+
+        partition = new_partition
+
+    else:
+
+        #new_Z = numpy.empty( ( Z.shape[0], Z.shape[1] + 3 ) )
+        #new_Z[:,:4] = Z
+        #Z = new_Z
+
+        print 'scanning clustering (param1=%d)...' % param1
+
+        partition = numpy.arange( ( points.shape[0] ) )
+
+        for i in xrange( max( 0, Z.shape[0] - param1 + 1 ) ):
+            index1, index2, dist, count = Z[ i, :4 ]
+            #if dist > dist_threshold:
+            #    break
+            new_index = i + points.shape[0]
+            #print 'i=%d, index1=%d, index2=%d, new_index=%d, dist=%f, count=%d' % ( i, index1,index2,new_index,dist,count )
+            mask1 = partition[:] == index1
+            mask2 = partition[:] == index2
+            mask = numpy.logical_or( mask1, mask2 )
+            partition[ mask ] = new_index
+
+        print 'done'
+
+        print 'min=%d, max=%d' % ( numpy.min( partition ), numpy.max( partition ) )
+
+        new_partition = -1 * numpy.ones( ( points.shape[0], ), dtype=int )
+        partition_ids = numpy.zeros( ( numpy.max( partition ) + 1, ), dtype=bool )
+        n = 0
+        for i in xrange( partition.shape[0] ):
+            partition_id = partition[ i ]
+            if not partition_ids[ partition_id ]:
+                partition_ids[ partition_id ] = True
+                mask = partition[:] == partition_id
+                new_partition[ mask ] = n
+                n += 1
+
+        partition = new_partition
+
 
     print 'n=%d, min=%d, max=%d' % ( n, numpy.min( partition ), numpy.max( partition ) )
 
@@ -360,7 +517,7 @@ def hcluster_special(method, points, param1, param2, param3, id ,minkowski_p):
     print points.shape[0], n
 
     return partition, clusters, Z
-    
+
 
 def hcluster(method, points, param1, param2, id, minkowski_p=2):
 
@@ -379,17 +536,17 @@ def hcluster(method, points, param1, param2, id, minkowski_p=2):
     if partition == None:
 
         if Z != None:
-    
+
             new_Z = numpy.empty( ( Z.shape[0], Z.shape[1] + 3 ) )
             new_Z[:,:4] = Z
             Z = new_Z
-    
+
             partition = numpy.arange( ( points.shape[0] ) )
-    
+
             print 'scanning clustering (param2=%d)...' % param2
-    
+
             devs = -1 * numpy.ones( ( 2*points.shape[0], ) )
-    
+
             for i in xrange( Z.shape[0] ):
                 index1, index2, dist, count = Z[ i, :4 ]
                 #if dist > dist_threshold:
@@ -413,13 +570,13 @@ def hcluster(method, points, param1, param2, id, minkowski_p=2):
                 else:
                     Z[i,5] = -1.0
                 Z[i,6] = dev_count
-    
-    
+
+
             partition = numpy.arange( ( points.shape[0] ) )
-    
+
             if param2 == -1:
                 param2 = Z.shape[0]
-    
+
             for i in xrange( max( 0, Z.shape[0] - param2 + 1 ) ):
                 index1, index2, dist, count = Z[ i, :4 ]
                 #if dist > dist_threshold:
@@ -430,11 +587,11 @@ def hcluster(method, points, param1, param2, id, minkowski_p=2):
                 mask2 = partition[:] == index2
                 mask = numpy.logical_or( mask1, mask2 )
                 partition[ mask ] = new_index
-    
+
             print 'done'
-    
+
             print 'min=%d, max=%d' % ( numpy.min( partition ), numpy.max( partition ) )
-    
+
             new_partition = -1 * numpy.ones( ( points.shape[0], ), dtype=int )
             partition_ids = numpy.zeros( ( numpy.max( partition ) + 1, ), dtype=bool )
             n = 0
@@ -445,14 +602,14 @@ def hcluster(method, points, param1, param2, id, minkowski_p=2):
                     mask = partition[:] == partition_id
                     new_partition[ mask ] = n
                     n += 1
-    
+
             partition = new_partition
-    
+
             print 'min=%d, max=%d' % ( numpy.min( partition ), numpy.max( partition ) )
-    
+
             clusters = compute_centroids_from_partition( points, partition )
             #clusters = numpy.zeros( ( numpy.max( partition ) + 1, points.shape[1] ) )
-    
+
             print 'found %d clusters' % ( numpy.max( partition ) + 1 )
 
     else:
@@ -460,7 +617,7 @@ def hcluster(method, points, param1, param2, id, minkowski_p=2):
         if Z == None:
 
             Z = numpy.empty( ( points.shape[0], 6 ) )
-    
+
             n = 0
             prange = numpy.arange( points.shape[0] )
             for i in xrange( numpy.max( partition ) + 1 ):
@@ -801,7 +958,7 @@ def __compute_feature_importance(points, point_mask, all_mads, all_mask):
 
         min_weight = numpy.min( importance[ mask ] )
         importance[ mask ] = importance[ mask ] - min_weight
-    
+
         max_weight = numpy.max( importance[ mask ] )
         if max_weight > 0.0:
             importance[ mask ] = importance[ mask ] / max_weight
@@ -876,20 +1033,20 @@ def compute_feature_weighting(partition, points, clusters, minkowski_p=2):
 
 def partition_along_clusters_kmeans( points, clusters, minkowski_p=2):
 
-        # calculate the distance of all the samples to the k-th cluster centroid
-        dist_m = distance.minkowski_cdist( clusters, points, minkowski_p )
+    # calculate the distance of all the samples to the k-th cluster centroid
+    dist_m = distance.minkowski_cdist( clusters, points, minkowski_p )
 
-        # find the cluster with the nearest centroid for each sample
-        partition = numpy.argmin( dist_m, 0 )
+    # find the cluster with the nearest centroid for each sample
+    partition = numpy.argmin( dist_m, 0 )
 
-        # return a one-dimensional numpy array of length n. For each sample the index
-        # of the cluster with the nearest centroid is specified
-        return partition
+    # return a one-dimensional numpy array of length n. For each sample the index
+    # of the cluster with the nearest centroid is specified
+    return partition
 
 def partition_along_clusters(new_points, points, partition, clusters, weights=None, minkowski_p=2):
     """Partition the samples along the clusters so that for each sample
     the change in the Error summed square (ESS) is minimal
-    
+
     Input parameters:
         - points: A nxm numpy array of the samples to be distributed.
           Rows are samples and columns are features.
@@ -977,7 +1134,7 @@ def find_nearest_cluster(points, clusters, weights=None, minkowski_p=2):
         dist_m = numpy.empty( ( clusters.shape[0], points.shape[0] ) )
         for k in xrange( clusters.shape[0] ):
             dist_m[ k ] = \
-                    distance.weighted_minkowski_dist( clusters[k], points, weights[k], minkowski_p )
+                  distance.weighted_minkowski_dist( clusters[k], points, weights[k], minkowski_p )
 
     # find the cluster with the nearest centroid for each sample
     partition = numpy.argmin( dist_m, 0 )
@@ -1658,7 +1815,7 @@ def cluster_kmeans_modified(points, k, minkowski_p=2, swap_threshold = 0, callba
 
         for k in xrange( clusters.shape[0] ):
             dist_to_clusters[ k ] = \
-                    distance.weighted_minkowski_dist( clusters[k], points, weights[k], minkowski_p )
+                            distance.weighted_minkowski_dist( clusters[k], points, weights[k], minkowski_p )
 
         """if minkowski_p == 2:
             dist_to_clusters = scipy.spatial.distance.cdist( points, clusters, 'euclidean' )
@@ -1697,10 +1854,10 @@ def cluster_kmeans_modified(points, k, minkowski_p=2, swap_threshold = 0, callba
                 mask = mads[:] > 0
 
                 weights[ k ][ mask ] = mads
-            
+
                 min_weight = numpy.min( weights[ k ][ mask ] )
                 weights[ k ][ mask ] = weights[ k ][ mask ] - min_weight
-            
+
                 max_weight = numpy.max( weights[ k ][ mask ] )
                 if max_weight > 0.0:
                     weights[ k ][ mask ] = weights[ k ][ mask ] / max_weight
@@ -1955,84 +2112,99 @@ def cluster_kmeans_modified2(points, k, minkowski_p=2, swap_threshold = 0, callb
 # been performed in an iteration
 def cluster_kmeans(points, k, minkowski_p=2, swap_threshold = 0, callback=None):
 
-    random_index = numpy.random.randint( 0,points.shape[0] )
-
     clusters = []
-    clusters.append( points[ random_index ] )
-
     partition = numpy.zeros( points.shape[0], int )
 
+    # Perform K-means++ initialization of the cluster vectors
+
+    random_index = numpy.random.randint( 0, points.shape[0] )
+    clusters.append( points[ random_index ] )
     dist_to_cluster = None
+    p = numpy.random.uniform(0.0, 1.0, k-1)
 
     for i in xrange(1,k):
 
-        dist_m = distance.minkowski_cdist( [ clusters[-1] ], points, minkowski_p )[ 0 ]
+        dist_m = distance.minkowski_cdist(
+                [clusters[-1]], points, minkowski_p)[0]
 
         if dist_to_cluster == None:
             dist_to_cluster = dist_m
         else:
             dist_to_cluster = numpy.min( [ dist_m, dist_to_cluster ], axis=0 )
+
+        """dist = dist_to_cluster.copy()
+        dist = dist / numpy.sqrt(numpy.sum(dist**2))
+        dist = numpy.cumsum(dist)
+        m = numpy.sum(p[i-1] > dist)
+        if m >= dist.shape[0]:
+            m = dist.shape[0] - 1
+        clusters.append(points[m])"""
+
         max_j = numpy.argmax( dist_to_cluster )
         clusters.append( points[ max_j ] )
 
     clusters = numpy.array( clusters )
 
-    iterations = 0
-    swaps = swap_threshold + 1
-    while swaps > swap_threshold:
+    # Try to import the ccluster module (C extension)
+    ccluster = None
+    try:
+        from ext import ccluster
+    except:
+        import sys
+        sys.stderr.write('Failed to import ccluster extension.\n' \
+                         'Running python implementation of k-means.\n')
+        ccluster = None
 
-        if iterations % 1 == 0:
-            if callback != None:
-                #if not callback( iterations, swaps ):
-                #    break
-                callback( iterations, swaps )
-            sys.stdout.write( '\riteration %d: swaps = %d ... ' % ( iterations, swaps ) )
-            sys.stdout.flush()
+    if ccluster is not None:
 
-        swaps = 0
+        try:
+            # ccluster module is available. Run K-means.
+            ccluster.kmeans(points, clusters, partition, minkowski_p, swap_threshold, callback)
+        except:
+            ccluster = None
+            import sys
+            sys.stderr.write('Running ccluster.kmeans failed. Falling back to python implementation.\n')
 
-        dist_to_clusters = distance.minkowski_cdist( points, clusters, minkowski_p )
+    if ccluster is None:
+        # ccluster is not available or failed. Run a Python implementation of K-means.
+        iterations = 0
+        swaps = swap_threshold + 1
+        while swaps > swap_threshold:
 
-        min_index = numpy.argmin( dist_to_clusters, 1 )
-        swaps = numpy.sum( min_index != partition )
-        partition = min_index
+            if iterations % 1 == 0:
+                if callback != None:
+                    #if not callback( iterations, swaps ):
+                    #    break
+                    callback( iterations, swaps )
+                sys.stdout.write( '\riteration %d: swaps = %d ... ' % ( iterations, swaps ) )
+                sys.stdout.flush()
 
-        """for i in xrange( points.shape[0] ):
-            row = dist_to_clusters[ i , : ]
-            min_dist = row[ 0 ]
-            min_j = 0
-            for j in xrange( 1, row.shape[0] ):
-                if row[j] < min_dist:
-                    min_dist = row[j]
-                    min_j = j
-            if partition[i] != min_j:
-                swaps += 1
-                partition[i] = min_j"""
+            swaps = 0
 
-        if swaps <= swap_threshold:
-            #print 'cluster_mean_count:'
-            #print cluster_mean_count
-            #print 'cluster_mean:'
-            #print cluster_mean
-            continue
+            dist_to_clusters = distance.minkowski_cdist( points, clusters, minkowski_p )
 
-        # calculate cluster means
+            min_index = numpy.argmin( dist_to_clusters, 1 )
+            swaps = numpy.sum( min_index != partition )
+            partition = min_index
 
-        #old_clusters = clusters.copy()
+            if swaps <= swap_threshold:
+                #print 'cluster_mean_count:'
+                #print cluster_mean_count
+                #print 'cluster_mean:'
+                #print cluster_mean
+                continue
 
-        for i in xrange( clusters.shape[0] ):
-            cluster_mask = ( partition[ : ] == i )
-            if numpy.sum( cluster_mask ) > 0:
-                cluster = numpy.mean( points[ cluster_mask ], 0 )
-                clusters[ i ] = cluster
-            #else:
-            #    cluster = old_clusters[ i ]
-            #clusters[ i ] = cluster
+            # calculate cluster means
+            for i in xrange( clusters.shape[0] ):
+                cluster_mask = ( partition[ : ] == i )
+                if numpy.sum( cluster_mask ) > 0:
+                    cluster = numpy.mean( points[ cluster_mask ], 0 )
+                    clusters[ i ] = cluster
 
-        iterations += 1
+            iterations += 1
 
-    sys.stdout.write( 'done\n' )
-    sys.stdout.flush()
+        sys.stdout.write( 'done\n' )
+        sys.stdout.flush()
 
     return partition, clusters
 
@@ -2093,18 +2265,6 @@ def cluster_kmedians(points, k, minkowski_p=2, swap_threshold = 0, callback=None
         min_index = numpy.argmin( dist_to_clusters, 1 )
         swaps = numpy.sum( min_index != partition )
         partition = min_index
-
-        """for i in xrange( points.shape[0] ):
-            row = dist_to_clusters[ i , : ]
-            min_dist = row[ 0 ]
-            min_j = 0
-            for j in xrange( 1, row.shape[0] ):
-                if row[j] < min_dist:
-                    min_dist = row[j]
-                    min_j = j
-            if partition[i] != min_j:
-                swaps += 1
-                partition[i] = min_j"""
 
         if swaps <= swap_threshold:
             #print 'cluster_mean_count:'
@@ -2368,12 +2528,12 @@ def gap_statistic(points, num_of_clusters, B=5, cluster_callback=None):
     for i in xrange( len( all ) ):
         dataset = all[ i ]
         partition,clusters,silhouette = cluster(
-                CLUSTER_METHOD_KMEANS,
-                dataset,
-                num_of_clusters,
-                minkowski_p,
-                False,
-                cluster_callback
+            CLUSTER_METHOD_KMEANS,
+            dataset,
+            num_of_clusters,
+            minkowski_p,
+            False,
+            cluster_callback
         )
         W[ i ] = within_cluster_distance( dataset, partition, clusters, minkowski_p, cluster_callback )
     W = numpy.log( W )
@@ -2399,4 +2559,3 @@ def determine_num_of_clusters(points, max_num_of_clusters, B=5, cluster_callback
             break
 
     return best_num_of_clusters, gaps, sk
-

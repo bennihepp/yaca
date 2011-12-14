@@ -1,25 +1,36 @@
+# -*- coding: utf-8 -*-
+
+"""
+importer.py -- Importing data files.
+
+- set_state() is used by parameter_utils.py
+- import_data() imports data from CellProfiler 2.0 generated CSV files.
+- load_hdf5() loads an HDF5 file containing data.
+- save_hdf5() saves data to an HDF5 file containing data.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
 import sys
 import os
-
 
 from ioutil.import_cp2_csv import import_cp2_csv_results
 from ioutil.import_export_hdf5 import *
 
-
 import parameter_utils as utils
-
-
+import analyse
+import quality_control
 
 pdc = None
-
 
 class Importer(object):
 
     def get_pdc(self):
         global pdc
         return pdc
-
-
 
 def set_state( state ):
 
@@ -41,8 +52,8 @@ def set_state( state ):
                 load_hdf5()
                 imported = True
             except Exception, e:
-                raise
                 print 'Unable to import HDF5 file %s: %s' % ( hdf5_input_file, str( e ) )
+                raise
 
         if not imported:
             try:
@@ -52,7 +63,6 @@ def set_state( state ):
                 raise Exception( "Couldn't recover saved state!" )
 
             import_data()
-
 
 def import_data():
 
@@ -67,7 +77,7 @@ def import_data():
     for prefix,file in tmp:
         if os.path.getmtime(file) > max_results_file_mtime:
             max_results_file_mtime = os.path.getmtime(file)
-    
+
     if os.path.isfile(hybrid_file) and ( os.path.getmtime(hybrid_file) > max_results_file_mtime ):
         pdc = import_hybrid_results(hybrid_file)
     else:
@@ -96,7 +106,6 @@ def import_data():
 
     return 'Finished importing data'
 
-
 def load_hdf5():
 
     global pdc
@@ -106,12 +115,30 @@ def load_hdf5():
     except:
         raise Exception( 'You need to specify the YACA HDF5 input file!' )
 
-    pdc = import_hdf5_results( hdf5_input_file )
+    further_hdf5_input_files = []
+    try:
+        further_hdf5_input_files = optional_hdf5_input_files
+    except:
+        pass
+
+    pdc = import_hdf5_results( hdf5_input_file, further_hdf5_input_files )
 
     utils.update_state( __name__, 'imported' )
 
     return 'Finished loading HDF5 file'
 
+def normalize_intensities():
+
+    global pdc
+
+    for img in pdc.images:
+        img.state = img.import_state
+    for obj in pdc.objects:
+        obj.state = obj.import_state
+
+    validImageMask, validCellMask = quality_control.quality_control( pdc )
+
+    analyse.normalize_to_control_cell_intensity( pdc, validCellMask )
 
 def save_hdf5():
 
@@ -132,7 +159,6 @@ def save_hdf5():
     return 'Finished saving HDF5 file'
 
 
-
 __dict__ = sys.modules[ __name__ ].__dict__
 
 utils.register_module( __name__, 'Data importer', __dict__, utils.DEFAULT_STATE )
@@ -148,6 +174,7 @@ utils.register_parameter( __name__, 'csv_delimiter', utils.PARAM_STR, 'Delimiter
 utils.register_parameter( __name__, 'csv_extension', utils.PARAM_STR, 'Extension for the CSV files', '.csv' )
 
 utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'YACA HDF5 input file', optional=True )
+utils.register_parameter( __name__, 'optional_hdf5_input_files', utils.PARAM_INPUT_FILES, 'Further YACA HDF5 input files', optional=True )
 
 utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'YACA HDF5 output file', optional=True )
 
@@ -157,5 +184,6 @@ utils.register_action( __name__, 'load_hdf5', 'Load data from a YACA HDF5 file',
 
 utils.register_action( __name__, 'save_hdf5', 'Save data as YACA HDF5 file', save_hdf5 )
 
-utils.set_module_state_callback( __name__, set_state )
+utils.register_action( __name__, 'normalize_intensities', 'Normalize intensity features to mean control cell intensity', normalize_intensities )
 
+utils.set_module_state_callback( __name__, set_state )

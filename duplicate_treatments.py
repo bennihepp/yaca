@@ -23,9 +23,9 @@ pdc = import_hdf5_results( hdf5_input_file )
 def split_random(pdc):
 
     new_treatments = []
-    
+
     new_tr_ids = numpy.empty( ( pdc.objFeatures.shape[0], ) )
-    
+
     offset = len( pdc.treatments )
     n = 0
     for tr in pdc.treatments:

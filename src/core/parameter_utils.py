@@ -1,9 +1,26 @@
+# -*- coding: utf-8 -*-
+
+"""
+parameter_utils.py -- Automatic parameter importing from configuration files.
+
+This module allows other modules to register themselves, required parameters,
+provided attributes and possible actions.
+"""
+
+# This software is distributed under the FreeBSD License.
+# See the accompanying file LICENSE for details.
+# 
+# Copyright 2011 Benjamin Hepp
+
+import os
 import yaml
 
 PARAM_ANY = 'any'
 PARAM_INT = 'int'
+PARAM_BOOL = 'bool'
 PARAM_FLOAT = 'float'
 PARAM_STR = 'str'
+PARAM_LONGSTR = 'longstr'
 PARAM_OBJ_FEATURE = 'objFeature'
 PARAM_IMG_FEATURE = 'imgFeature'
 PARAM_TREATMENT = 'treatment'
@@ -12,15 +29,19 @@ PARAM_INPUT_FILE = 'input_file'
 PARAM_OUTPUT_FILE = 'output_file'
 PARAM_INTS = 'ints'
 PARAM_STRS = 'strs'
+PARAM_DICT = 'dict'
 PARAM_TREATMENTS = 'treatments'
+PARAM_REPLICATE_TREATMENTS = 'replicate_treatments'
 PARAM_OBJ_FEATURES = 'objFeatures'
 PARAM_INPUT_FILES = 'input_files'
 
 PARAM_TYPES = [
     PARAM_ANY,
     PARAM_INT,
+    PARAM_BOOL,
     PARAM_FLOAT,
     PARAM_STR,
+    PARAM_LONGSTR,
     PARAM_OBJ_FEATURE,
     PARAM_IMG_FEATURE,
     PARAM_TREATMENT,
@@ -29,7 +50,9 @@ PARAM_TYPES = [
     PARAM_OUTPUT_FILE,
     PARAM_INTS,
     PARAM_STRS,
+    PARAM_DICT,
     PARAM_TREATMENTS,
+    PARAM_REPLICATE_TREATMENTS,
     PARAM_OBJ_FEATURES,
     PARAM_INPUT_FILES
 ]
@@ -90,7 +113,7 @@ def register_attribute( object, attr_name, attr_get, attr_set, attr_reset = None
                 del __PRE_LOADED_OBJECTS[ object ]
 
 
-def register_parameter( module, param_name, param_type, param_descr, param_default=None, param_min=None, param_max=None, optional=False, **kwargs ):
+def register_parameter( module, param_name, param_type, param_descr, param_default=None, param_min=None, param_max=None, optional=False, hidden=False, **kwargs ):
     if not module in __MODULES:
         raise Exception( 'Module has to be registered before adding parameters: module %s' % module )
 
@@ -107,7 +130,7 @@ def register_parameter( module, param_name, param_type, param_descr, param_defau
         param_max = kwargs[ 'param_max' ]
 
     __MODULE_PARAMETERS[ module ].append( param_name )
-    __MODULE_PARAMETER_DESCR[ module ][ param_name ] = ( param_type, param_descr, param_default, param_min, param_max, optional )
+    __MODULE_PARAMETER_DESCR[ module ][ param_name ] = ( param_type, param_descr, param_default, param_min, param_max, optional, hidden )
 
     if not optional and param_default != None:
         set_parameter_value( module, param_name, param_default )
@@ -208,7 +231,6 @@ def save_module_configuration( filename ):
             ( attr_get, attr_set, attr_reset ) = __OBJECT_ATTRIBUTE_CALLBACKS[ object ][ attr_name ]
 
             value = attr_get()
-            #print value
             if value != None:
                 attributes[ attr_name ] = value
 
@@ -229,10 +251,13 @@ def save_module_configuration( filename ):
             file.close()
 
 
-def load_module_configuration( filename ):
+def load_module_configuration( filename , pathname=None):
     file = None
     try:
+        if pathname != None:
+            filename = os.path.join(pathname, filename)
         file = open( filename, 'r' )
+        pathname = os.path.join(os.getcwd(), os.path.dirname(filename))
 
         yaml_container = yaml.load( file )
 
@@ -240,59 +265,62 @@ def load_module_configuration( filename ):
         if file:
             file.close()
 
-    if ( not 'modules' in yaml_container ) or ( not 'objects' in yaml_container ):
-        raise Exception( 'Invalid YACA configuration file' )
+    #if ( not 'modules' in yaml_container ) or ( not 'objects' in yaml_container ):
+    #    raise Exception( 'Invalid YACA configuration file' )
 
 
-    module_container = yaml_container[ 'modules' ]
-    for module in yaml_container[ 'modules' ]:
-
-        if module in __MODULES:
-
-            try:
-                state = module_container[ module ][ 'state' ]
-                parameters = module_container[ module ][ 'parameters' ]
-            except:
-                raise Exception( 'Invalid YACA configuration file' )
-
-            for param_name in parameters:
+    if 'modules' in yaml_container:
+        module_container = yaml_container[ 'modules' ]
+        for module in module_container:
     
-                value = parameters[ param_name ]
+            if module in __MODULES:
     
-                set_parameter_value( module, param_name, value )
+                if 'parameters' in module_container[ module ]:
+                    parameters = module_container[ module ][ 'parameters' ]
+                else:
+                    parameters = {}
+                for param_name in parameters:
+                    value = parameters[ param_name ]
+                    set_parameter_value( module, param_name, value )
+
+                if 'state' in module_container[module]:
+                    state = module_container[module]['state']
+                    update_state(module, state)
+                    cb = __MODULE_STATE_CALLBACKS[ module ]
+                    if cb != None:
+                        cb( state )
+
+            else:
     
-            update_state( module, state )
+                __PRE_LOADED_MODULES[ module ] = module_container[ module ]
 
-            cb = __MODULE_STATE_CALLBACKS[ module ]
-            if cb != None:
-                cb( state )
-
-        else:
-
-            __PRE_LOADED_MODULES[ module ] = module_container[ module ]
-
-
-    object_container = yaml_container[ 'objects' ]
-    for object in yaml_container[ 'objects' ]:
-
-        if object in __OBJECTS:
-
-            try:
-                attributes = object_container[ object ]
-            except:
-                raise Exception( 'Invalid YACA configuration file' )
+    if 'objects' in yaml_container:
+        object_container = yaml_container[ 'objects' ]
+        for object in object_container:
     
-            for attr_name in attributes:
+            if object in __OBJECTS:
     
-                value = attributes[ attr_name ]
+                try:
+                    attributes = object_container[ object ]
+                except:
+                    raise Exception( 'Invalid YACA configuration file' )
+        
+                for attr_name in attributes:
+        
+                    value = attributes[ attr_name ]
+        
+                    ( attr_get, attr_set, attr_reset ) = __OBJECT_ATTRIBUTE_CALLBACKS[ object ][ attr_name ]
+        
+                    attr_set( value )
     
-                ( attr_get, attr_set, attr_reset ) = __OBJECT_ATTRIBUTE_CALLBACKS[ object ][ attr_name ]
+            else:
     
-                attr_set( value )
+                __PRE_LOADED_OBJECTS[ object ] = object_container[ object ]
 
-        else:
-
-            __PRE_LOADED_OBJECTS[ object ] = object_container[ object ]
+    if 'config_files' in yaml_container:
+        config_files_container = yaml_container['config_files']
+        for config_file in config_files_container:
+            load_module_configuration(config_file, pathname)
 
 
 def update_state( module, state ):
@@ -446,7 +474,8 @@ def all_parameters_set( module ):
     all_set = True
 
     for param_name in __MODULE_PARAMETERS[ module ]:
-        param_type, param_descr, param_default, param_min, param_max, optional = __MODULE_PARAMETER_DESCR[ module ][ param_name ]
+        param_type, param_descr, param_default, param_min, param_max, optional, hidden = \
+                  __MODULE_PARAMETER_DESCR[ module ][ param_name ]
         if not optional:
             context = __MODULE_CONTEXTS[ module ]
             try:
@@ -471,9 +500,13 @@ def set_parameter_value( module, param_name, value ):
         try:
             if param_type == PARAM_INT:
                 value = int( value )
+            elif param_type == PARAM_BOOL:
+                value = bool( value )
             elif param_type == PARAM_FLOAT:
                 value = float( value )
             elif param_type == PARAM_STR:
+                value = str( value )
+            elif param_type == PARAM_LONGSTR:
                 value = str( value )
             elif param_type == PARAM_OBJ_FEATURE:
                 value = str( value )
@@ -493,10 +526,18 @@ def set_parameter_value( module, param_name, value ):
                 value = list( value )
                 for i in xrange( len( value ) ):
                     value[ i ] = str( value[ i ] )
+            elif param_type == PARAM_DICT:
+                value = dict( value )
+                for k,v in value.iteritems():
+                    value[k] = str(value[v])
             elif param_type == PARAM_TREATMENTS:
                 value = list( value )
                 for i in xrange( len( value ) ):
                     value[ i ] = str( value[ i ] )
+            elif param_type == PARAM_REPLICATE_TREATMENTS:
+                value = list( value )
+                #for i in xrange( len( value ) ):
+                #    value[ i ] = str( value[ i ] )
             elif param_type == PARAM_OBJ_FEATURES:
                 value = list( value )
                 for i in xrange( len( value ) ):
