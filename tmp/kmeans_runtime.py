@@ -5,6 +5,8 @@ import numpy as np
 
 from core import cluster
 
+global log_file
+
 if len(sys.argv) > 1:
     log_filename = sys.argv[1]
     log_file = open(log_filename, 'a')
@@ -12,6 +14,8 @@ else:
     log_file = None
 
 def test_cluster_kmeans(repeat, runs, data, k):
+
+    global log_file
 
     np.random.seed( int( time.time() ) )
 
@@ -51,7 +55,7 @@ f.close()
 
 repeat, runs = 3, 3
 N = [1000, np.sqrt(10)*1000, 10000, np.sqrt(10)*10000, 100000]
-K = [5, 10, 20, 50]
+K = [100, 200]
 
 for n in N:
     n = int(n)

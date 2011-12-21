@@ -68,3 +68,15 @@
 100000 objects, 20 features, 10 clusters: clocks=47.870000 +- 11.489745, times=6.186171 +- 1.457816
 100000 objects, 20 features, 20 clusters: clocks=80.212222 +- 26.377464, times=10.555655 +- 3.285815
 100000 objects, 20 features, 50 clusters: clocks=110.480000 +- 49.124041, times=15.323001 +- 6.137106
+
+# 8 cpus:
+1000 objects, 20 features, 100 clusters: clocks=0.460000 +- 0.117757, times=0.062418 +- 0.002253
+1000 objects, 20 features, 200 clusters: clocks=0.935556 +- 0.083813, times=0.121010 +- 0.001812
+3162 objects, 20 features, 100 clusters: clocks=1.304444 +- 0.121574, times=0.199843 +- 0.004893
+3162 objects, 20 features, 200 clusters: clocks=1.606667 +- 0.070553, times=0.367367 +- 0.011463
+10000 objects, 20 features, 100 clusters: clocks=4.760000 +- 0.997631, times=0.910692 +- 0.123820
+10000 objects, 20 features, 200 clusters: clocks=5.728889 +- 0.364705, times=1.445575 +- 0.048057
+31622 objects, 20 features, 100 clusters: clocks=30.328889 +- 8.354053, times=5.263882 +- 1.043325
+31622 objects, 20 features, 200 clusters: clocks=42.991111 +- 9.103763, times=8.430231 +- 1.161603
+100000 objects, 20 features, 100 clusters: clocks=213.538889 +- 112.174554, times=31.456581 +- 14.030635
+100000 objects, 20 features, 200 clusters: clocks=322.761111 +- 83.651641, times=50.060207 +- 10.461203

@@ -48,8 +48,8 @@ class QSciScriptFileWidget(QsciScintilla):
         self.show()
 
     def filename(self):
-        if self.__curFile:
-            return os.path.basename(self.__curFile)
+        if not self.__curFile.isEmpty():
+            return os.path.basename(str(self.__curFile))
         else:
             return '<unnamed>'
 
@@ -91,10 +91,13 @@ class QSciScriptFileWidget(QsciScintilla):
         # TODO: Check if file was removed or renamed
         if ret == QMessageBox.Yes:
             self.loadFile(path)
-        else:
-            self.fileWatcher.addPath(path)
+        #else:
+        #    self.fileWatcher.addPath(path)
 
     def loadFile(self, path):
+        if self.fileWatcher is not None:
+            for file in self.fileWatcher.files():
+                self.fileWatcher.removePath(file)
         file = QFile(path)
         if not file.open(QFile.ReadOnly | QFile.Text):
             QMessageBox.warning(self, 'Script Widget',
@@ -109,6 +112,8 @@ class QSciScriptFileWidget(QsciScintilla):
         marginWidth = int(math.ceil(math.log(self.lines(), 10))) + 1
         marginWidth = max(marginWidth, 2)
         self.setMarginWidth(1, '1' * marginWidth)
+        if self.fileWatcher is not None:
+            self.fileWatcher.addPath(path)
         return True
 
     def setCurrentFile(self, path):
@@ -121,11 +126,11 @@ class QSciScriptFileWidget(QsciScintilla):
         qf = QFileInfo(path)
         self.setWindowTitle(qf.fileName())
         self.__curFile = path
-        if self.fileWatcher is not None:
-            for file in self.fileWatcher.files():
-                self.fileWatcher.removePath(file)
-            if qf.exists() and qf.isFile() and qf.isReadable():
-                self.fileWatcher.addPath(path)
+        #if self.fileWatcher is not None:
+        #    for file in self.fileWatcher.files():
+        #        self.fileWatcher.removePath(file)
+        #    if qf.exists() and qf.isFile() and qf.isReadable():
+        #        self.fileWatcher.addPath(path)
 
     def save(self):
         if self.__curFile.isEmpty():
@@ -140,6 +145,11 @@ class QSciScriptFileWidget(QsciScintilla):
         return self.saveFile(path)
 
     def saveFile(self, path):
+        if self.fileWatcher is not None:
+            for file in self.fileWatcher.files():
+                self.fileWatcher.removePath(file)
+        #if self.fileWatcher is not None:
+        #        self.fileWatcher.removePath(path)
         file = QFile(path)
         if not file.open(QFile.WriteOnly | QFile.Text):
             QMessageBox.warning(self, 'Script file: %s' % (self.__curFile),
@@ -151,6 +161,8 @@ class QSciScriptFileWidget(QsciScintilla):
         QApplication.restoreOverrideCursor()
         file.close()
         self.setCurrentFile(path)
+        if self.fileWatcher is not None:
+                self.fileWatcher.addPath(path)
         return True
 
     def maybeSave(self):

@@ -1,13 +1,14 @@
 import scipy.stats
 import matplotlib
 
-from sklearn import svm
+#from sklearn import svm
 
-step = 20
+step = 100
 norm_features = pl.clusterNormFeatures[::step]
 clusters = pl.clusters
 partition = pl.partition[::step]
-svm.SVC(
+#svm.SVC(
+
 def fit_pca(N, original_data, kernel='rbf'):
     import sklearn.decomposition
 
@@ -52,6 +53,8 @@ def plot_decision_surface(axes, clusters, X, Y=None):
     pylab.set_cmap(pylab.cm.Paired)
     pylab.axes(axes)
     pylab.contourf(xx, yy, Z, cmap=pylab.cm.Paired)
+    pylab.xlim(np.min(xx), np.max(xx))
+    pylab.ylim(np.min(yy), np.max(yy))
     #pylab.axis('off')
 
     # Plot also the training points

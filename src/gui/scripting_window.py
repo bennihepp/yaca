@@ -86,7 +86,7 @@ class ScriptingWindow(QMainWindow):
     def on_run_script_file(self):
         if isinstance(self.__tabwidget.currentWidget(), ScriptFileWidget):
             content = unicode(self.__tabwidget.currentWidget().text())
-            codeobj = compile(content, self.__tabwidget.currentWidget().filename())
+            codeobj = compile(content, self.__tabwidget.currentWidget().filename(), 'exec')
             exec codeobj in self.__global_ns, self.__user_ns
 
     def closeEvent(self, event):
