@@ -159,24 +159,44 @@ def save_hdf5():
     return 'Finished saving HDF5 file'
 
 
+
+def filename_hook(module, param_name, param_value, yaml_filename):
+    if type(param_value) == str:
+        values = [param_value]
+    else:
+        values = param_value
+    for i, value in enumerate(values):
+        if not os.path.isabs(value):
+            values[i] = os.path.join(os.path.dirname(yaml_filename), value)
+    if type(param_value) == str:
+        return values[0]
+    else:
+        return values
+
 __dict__ = sys.modules[ __name__ ].__dict__
 
 utils.register_module( __name__, 'Data importer', __dict__, utils.DEFAULT_STATE )
 
 utils.register_parameter( __name__, 'image_cp2_file', utils.PARAM_INPUT_FILE, 'Image CSV file from CellProfiler 2', optional=True )
+utils.set_parameter_hook( __name__, 'image_cp2_file', filename_hook )
 
 utils.register_parameter( __name__, 'object_cp2_csv_files', utils.PARAM_INPUT_FILES, 'Object CSV files from CellProfiler 2', optional=True )
+utils.set_parameter_hook( __name__, 'object_cp2_csv_files', filename_hook )
 
 utils.register_parameter( __name__, 'cp2_csv_path', utils.PARAM_PATH, 'Path to CellProfiler 2 CSV files', optional=True )
+utils.set_parameter_hook( __name__, 'cp2_csv_path', filename_hook )
 
 utils.register_parameter( __name__, 'csv_delimiter', utils.PARAM_STR, 'Delimiter for the CSV files', ',' )
 
 utils.register_parameter( __name__, 'csv_extension', utils.PARAM_STR, 'Extension for the CSV files', '.csv' )
 
 utils.register_parameter( __name__, 'hdf5_input_file', utils.PARAM_INPUT_FILE, 'YACA HDF5 input file', optional=True )
+utils.set_parameter_hook( __name__, 'hdf5_input_file', filename_hook )
 utils.register_parameter( __name__, 'optional_hdf5_input_files', utils.PARAM_INPUT_FILES, 'Further YACA HDF5 input files', optional=True )
+utils.set_parameter_hook( __name__, 'optional_hdf5_input_files', filename_hook )
 
 utils.register_parameter( __name__, 'hdf5_output_file', utils.PARAM_OUTPUT_FILE, 'YACA HDF5 output file', optional=True )
+utils.set_parameter_hook( __name__, 'hdf5_output_file', filename_hook )
 
 utils.register_action( __name__, 'import', 'Import data', import_data )
 

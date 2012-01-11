@@ -73,6 +73,7 @@ __MODULE_DESCR = {}
 __MODULE_CONTEXTS = {}
 __MODULE_PARAMETERS = {}
 __MODULE_PARAMETER_DESCR = {}
+__MODULE_PARAMETER_HOOKS = {}
 __MODULE_REQUIREMENTS = {}
 __MODULE_STATES = {}
 __MODULE_STATE_CALLBACKS = {}
@@ -93,6 +94,7 @@ def register_module( module, descr, param_context, state=DEFAULT_STATE ):
     __MODULE_CONTEXTS[ module ] = param_context
     __MODULE_PARAMETERS[ module ] = []
     __MODULE_PARAMETER_DESCR[ module ] = {}
+    __MODULE_PARAMETER_HOOKS[ module ] = {}
     __MODULE_STATES[ module ] = 'default'
     __MODULE_STATE_CALLBACKS[ module ] = None
     __MODULE_ACTIONS[ module ] = {}
@@ -131,6 +133,7 @@ def register_parameter( module, param_name, param_type, param_descr, param_defau
 
     __MODULE_PARAMETERS[ module ].append( param_name )
     __MODULE_PARAMETER_DESCR[ module ][ param_name ] = ( param_type, param_descr, param_default, param_min, param_max, optional, hidden )
+    set_parameter_hook( module, param_name, kwargs.get('hook', None) )
 
     if not optional and param_default != None:
         set_parameter_value( module, param_name, param_default )
@@ -142,6 +145,12 @@ def register_parameter( module, param_name, param_type, param_descr, param_defau
             del __PRE_LOADED_MODULES[ module ][ param_name ]
             if len( __PRE_LOADED_MODULES[ module ] ) <= 0:
                 del __PRE_LOADED_MODULES[ module ]
+
+def set_parameter_hook( module, param_name, hook ):
+    if not module in __MODULES:
+        raise Exception( 'Module has to be registered before adding parameters: module %s' % module )
+    
+    __MODULE_PARAMETER_HOOKS[ module ][ param_name ] = hook
 
 
 def register_action( module, action_name, action_descr, action_callback ):
@@ -281,7 +290,7 @@ def load_module_configuration( filename , pathname=None):
                     parameters = {}
                 for param_name in parameters:
                     value = parameters[ param_name ]
-                    set_parameter_value( module, param_name, value )
+                    set_parameter_value( module, param_name, value, filename )
 
                 if 'state' in module_container[module]:
                     state = module_container[module]['state']
@@ -487,7 +496,7 @@ def all_parameters_set( module ):
     return all_set
 
 
-def set_parameter_value( module, param_name, value ):
+def set_parameter_value( module, param_name, value, yaml_filename=None ):
     if not module in __MODULES:
         raise Exception( 'Module has not been registered yet: module %s' % module )
     if not param_name in __MODULE_PARAMETERS[ module ]:
@@ -559,6 +568,10 @@ def set_parameter_value( module, param_name, value ):
         if param_max != None:
             if value > param_max:
                 raise Exception( 'Parameter value is too big: module/param %s/%s' % ( module, param_name ) )
+
+        hook = __MODULE_PARAMETER_HOOKS[ module ][ param_name ]
+        if hook is not None and callable(hook):
+            value = hook( module, param_name, value, yaml_filename )
 
         context = __MODULE_CONTEXTS[ module ]
         context[ param_name ] = value

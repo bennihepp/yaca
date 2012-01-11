@@ -11,15 +11,18 @@
 
 PREFIX=/g/pepperkok/hepp/cluster
 
-PATH=$PREFIX/bin
-PATH=$PREFIX/qt/bin:${PATH}
-LD_LIBRARY_PATH=$PREFIX/qt/lib
-LD_LIBRARY_PATH=$PREFIX/lib:${LD_LIBRARY_PATH}
-LD_LIBRARY_PATH=$PREFIX/lib64:${LD_LIBRARY_PATH}
-PYTHONPATH=$PREFIX/lib/python2.6/site-packages
-PYTHONPATH=$PREFIX/lib64/python2.6/site-packages:${PYTHONPATH}
+#PATH=$PREFIX/bin
+#PATH=$PREFIX/qt/bin:${PATH}
+#LD_LIBRARY_PATH=$PREFIX/qt/lib
+#LD_LIBRARY_PATH=$PREFIX/lib:${LD_LIBRARY_PATH}
+#LD_LIBRARY_PATH=$PREFIX/lib64:${LD_LIBRARY_PATH}
+#PYTHONPATH=$PREFIX/lib/python2.6/site-packages
+#PYTHONPATH=$PREFIX/lib64/python2.6/site-packages:${PYTHONPATH}
 
 PYTHONPATH="/g/pepperkok/hepp/code/mysnippets:${PYTHONPATH}"
+
+LD_LIBRARY_PATH=/g/software/linux/pack/qt-4.7.3/lib:$LD_LIBRARY_PATH
+PYTHONPATH=/g/software/linux/pack/pyqt-4.8.4/lib/python2.7/site-packages:/g/software/linux/pack/sip-4.12.3/lib/python2.7/site-packages:$PYTHONPATH
 
 #export JAVA_HOME
 export PATH

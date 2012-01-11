@@ -101,8 +101,8 @@ except:
     
         def loadFile(self, path):
             if self.fileWatcher is not None:
-            for file in self.fileWatcher.files():
-                self.fileWatcher.removePath(file)
+                for file in self.fileWatcher.files():
+                    self.fileWatcher.removePath(file)
             file = QFile(path)
             if not file.open(QFile.ReadOnly | QFile.Text):
                 QMessageBox.warning(self, 'Script Widget',
