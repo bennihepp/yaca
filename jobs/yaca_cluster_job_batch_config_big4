@@ -1,6 +1,0 @@
-#!/bin/bash
-#PBS -M hepp@embl.de
-#PBS -o /g/pepperkok/hepp/yaca/logs/cluster_job_out_batch_config_big4
-#PBS -e /g/pepperkok/hepp/yaca/logs/cluster_job_err_batch_config_big4
-
-/g/pepperkok/hepp/yaca/run_yaca_cluster.sh --batch --config-file /g/pepperkok/hepp/yaca_results/batch/batch_config_big4.yaml
