@@ -135,7 +135,7 @@ class ScriptingWindow(QMainWindow):
 
         self.__add_actions(self.file_menu, 
             (new_action, open_action, save_action, save_as_action, close_action, None, close_window_action)
-        )
+       )
 
         run_script_action = self.__make_action("&Run script file",
             shortcut="Ctrl+R", slot=self.on_run_script_file,
@@ -143,7 +143,7 @@ class ScriptingWindow(QMainWindow):
 
         self.__add_actions(self.script_menu, 
             (run_script_action,)
-        )
+       )
 
     def __add_actions(self, target, actions):
         for action in actions:
@@ -152,7 +152,7 @@ class ScriptingWindow(QMainWindow):
             else:
                 target.addAction(action)
 
-    def __make_action(  self, text, slot=None, shortcut=None, 
+    def __make_action( self, text, slot=None, shortcut=None, 
                         icon=None, tip=None, checkable=False, 
                         signal="triggered()"):
         action = QAction(text, self)

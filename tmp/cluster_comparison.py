@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 def do_stuff(fig, axes):
-    fig.subplots_adjust( bottom=0.32 )
+    fig.subplots_adjust(bottom=0.32)
 
     good = numpy.array([10,6,4,9])
     medium = numpy.array([4,4,6,7])
@@ -52,7 +52,7 @@ def do_stuff(fig, axes):
 
     axes.legend(loc=1)
 
-    axes.grid( True )
+    axes.grid(True)
 
 params = {
     'axes.labelsize': 24,

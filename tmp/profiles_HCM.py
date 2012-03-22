@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 def do_stuff(fig, axes, label1, profile1, label2, profile2, label3, profile3):
-    fig.subplots_adjust( bottom=0.15 )
+    fig.subplots_adjust(bottom=0.15)
 
     #mask = []
     #newLabels = []
@@ -67,7 +67,7 @@ def do_stuff(fig, axes, label1, profile1, label2, profile2, label3, profile3):
     label = label1.split(',')[0]
     #axes.set_title(label)
 
-    axes.grid( True )
+    axes.grid(True)
 
 params = {
     'axes.labelsize': 24,

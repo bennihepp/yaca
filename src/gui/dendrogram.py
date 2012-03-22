@@ -364,7 +364,7 @@ def _dendrogram_calculate_info(Z, p, truncate_mode, \
         color_list.append(v)
     else:
         color_list.append(c)
-    return ( ((uiva + uivb) / 2), uwa+uwb, h, max_dist)
+    return (((uiva + uivb) / 2), uwa+uwb, h, max_dist)
 
 
 

@@ -30,7 +30,7 @@ start_pipeline = False
 
 #def print_help():
 
-    #sys.stderr.write( """Usage: python %s [options]
+    #sys.stderr.write("""Usage: python %s [options]
 #Possible options:
   #--simple-ui                   Use a simplified user interface (e.g. for presentation)
   #--full-ui                     Use the full user interface (default)
@@ -41,13 +41,13 @@ start_pipeline = False
                                 #of the project file
   #--img-symlinks <path>         Create symlinks of the images within <path>,
                                 #the filename will be the image-ID.
-#""" % sys.argv[ 0 ] )
+#""" % sys.argv[0])
 
 
-#if len( sys.argv ) > 1:
-    #for i in xrange( 1, len( sys.argv ) ):
+#if len(sys.argv) > 1:
+    #for i in xrange(1, len(sys.argv)):
 
-        #arg = sys.argv[ i ]
+        #arg = sys.argv[i]
 
         #if skip_next > 0:
             #skip_next -= 1
@@ -64,18 +64,18 @@ start_pipeline = False
         #elif arg == '--run-filtering':
             #start_pipeline = True
         #elif arg == '--img-symlinks':
-            #img_symlink_dir= sys.argv[ i+1 ]
+            #img_symlink_dir= sys.argv[i+1]
             #skip_next = 1
         #elif arg == '--project-file':
-            #project_file = sys.argv[ i+1 ]
+            #project_file = sys.argv[i+1]
             #skip_next = 1
         #elif arg == '--help':
             #print_help()
-            #sys.exit( 0 )
+            #sys.exit(0)
         #else:
-            #sys.stderr.write( 'Unknown option: %s\n' % arg )
+            #sys.stderr.write('Unknown option: %s\n' % arg)
             #print_help()
-            #sys.exit( -1 )
+            #sys.exit(-1)
 
 
 from PyQt4.QtCore import *
@@ -92,19 +92,19 @@ def run(args):
 
         #print 'creating image symlinks...'
 
-        #if not os.path.isdir( img_symlink_dir ):
-            #os.mkdir( img_symlink_dir )
+        #if not os.path.isdir(img_symlink_dir):
+            #os.mkdir(img_symlink_dir)
 
-        #for i in xrange( len( pdc.images ) ):
+        #for i in xrange(len(pdc.images)):
 
-            #img = pdc.images[ i ]
+            #img = pdc.images[i]
             #imgId = img.index
             #imgFiles = img.imageFiles
 
             #for name,path in imgFiles:
-                #symlink_name = '%04d_%s.tif' % ( imgId, name )
-                #symlink_path = os.path.join( img_symlink_dir, symlink_name )
-                #os.symlink( path, symlink_path )
+                #symlink_name = '%04d_%s.tif' % (imgId, name)
+                #symlink_path = os.path.join(img_symlink_dir, symlink_name)
+                #os.symlink(path, symlink_path)
 
         #print 'finished creating image symlinks'
 
@@ -112,14 +112,14 @@ def run(args):
     project_file = args.project_file
     start_pipeline = args.run_filtering
 
-    app = QApplication( sys.argv )
+    app = QApplication(sys.argv)
 
-    #mainwindow = MainWindow( simple_ui )
+    #mainwindow = MainWindow(simple_ui)
     mainwindow = MainWindow()
     mainwindow.show()
 
     if project_file:
-        mainwindow.load_project_file( project_file )
+        mainwindow.load_project_file(project_file)
         if start_pipeline:
             mainwindow.on_start_cancel()
 
@@ -136,8 +136,8 @@ def run(args):
     keys = pdc.imgFeatureIds.keys()
     keys.sort()
     for k in keys:
-        id = pdc.imgFeatureIds[ k ]
-        v = pdc.imgFeatures[ 0 , id ]
+        id = pdc.imgFeatureIds[k]
+        v = pdc.imgFeatures[0 , id]
         print '%s=%f' % (k,v)
 
     return pdc"""

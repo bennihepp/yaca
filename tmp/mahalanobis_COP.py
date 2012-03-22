@@ -11,7 +11,7 @@ def do_stuff(fig, axes):
     d = up.load()
     f.close()
 
-    fig.subplots_adjust( bottom=0.2 )
+    fig.subplots_adjust(bottom=0.2)
 
     labels, total, total_error, nonControl, nonControl_error = d['labels'], d['total'], d['total_error'], d['nonControl'], d['nonControl_error']
 
@@ -46,8 +46,8 @@ def do_stuff(fig, axes):
     axes.legend(loc=0)
     
     axes.set_xlim(-1.2, 2*len(labels) - 0.8)
-    axes.set_ylabel( 'Mahalanobis distance', rotation='90' )
-    axes.grid( True )
+    axes.set_ylabel('Mahalanobis distance', rotation='90')
+    axes.grid(True)
 
 params = {
     'axes.labelsize': 24,

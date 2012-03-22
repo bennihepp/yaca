@@ -17,8 +17,8 @@ def set_debugging(debugging=True, remote=False, suspend=False):
     global __DEBUGGING__, __REMOTE__, __STATE__
     if debugging:
         __STATE__ = 'running'
+        import wingdbstub
         if remote:
-            import wingdbstub
             wingdbstub.Ensure()
             if suspend:
                 suspend_debugging()

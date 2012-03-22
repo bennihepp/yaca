@@ -27,8 +27,8 @@ def do_stuff(fig, axes):
     axes.legend(loc=0)
     
     axes.set_xlim(-1.2, 2*len(labels) - 0.8)
-    axes.set_ylabel( 'Mahalanobis distance', rotation='90' )
-    axes.grid( True )
+    axes.set_ylabel('Mahalanobis distance', rotation='90')
+    axes.grid(True)
 
 params = {
     'axes.labelsize': 24,

@@ -11,8 +11,12 @@ main_window.py -- GUI main window.
 
 import sys, os, random
 import numpy
+import logging
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from results_window import ResultsWindow
 from channel_description_widgets import ChannelDescriptionTab
@@ -25,6 +29,8 @@ import parameter_widgets
 
 from ..core import pipeline
 from ..core import importer
+from ..core import db_importer
+from ..core import cp_importer
 from ..core import analyse
 
 from ..core import parameter_utils as utils
@@ -37,14 +43,14 @@ class ActionButton(QPushButton):
 
     def __init__(self, descr, module, action_name, parent=None):
 
-        QPushButton.__init__( self, descr, parent )
+        QPushButton.__init__(self, descr, parent)
 
         self.module = module
         self.action_name = action_name
-        self.connect( self, SIGNAL('clicked()'), self.on_clicked )
+        self.connect(self, SIGNAL('clicked()'), self.on_clicked)
 
     def on_clicked(self):
-        self.emit( SIGNAL('action'), self.module, self.action_name )
+        self.emit(SIGNAL('action'), self.module, self.action_name)
 
 
 class MainWindow(QMainWindow):
@@ -52,8 +58,6 @@ class MainWindow(QMainWindow):
     def __init__(self, simple_ui=False, parent=None):
 
         self.__simple_ui = simple_ui
-
-        self.importer = importer.Importer()
 
         QMainWindow.__init__(self, parent)
         self.setWindowTitle('Main')
@@ -103,7 +107,7 @@ class MainWindow(QMainWindow):
                 'The current project has not been saved!',
                 QMessageBox.Cancel | QMessageBox.Save | QMessageBox.Discard,
                 self
-            )
+           )
             result = msgBox.exec_()
 
             if result == QMessageBox.Save:
@@ -119,24 +123,24 @@ class MainWindow(QMainWindow):
     def on_new_project(self):
         if self.project_saved():
             utils.reset_module_configuration()
-            self.reset_module_tab_widget( self.tab_widget )
-            self.update_module_tab_widget( self.tab_widget )
-            self.statusBar().showMessage( 'New project' )
+            self.reset_module_tab_widget(self.tab_widget)
+            self.update_module_tab_widget(self.tab_widget)
+            self.statusBar().showMessage('New project')
 
     def load_project_file(self, path):
-        self.statusBar().showMessage( 'Loading project file...' )
-        utils.load_module_configuration( path )
-        self.reset_module_tab_widget( self.tab_widget )
-        self.update_module_tab_widget( self.tab_widget )
-        self.statusBar().showMessage( 'Project file loaded' )
+        self.statusBar().showMessage('Loading project file...')
+        utils.load_module_configuration(path)
+        self.reset_module_tab_widget(self.tab_widget)
+        self.update_module_tab_widget(self.tab_widget)
+        self.statusBar().showMessage('Project file loaded')
 
     def save_project_file(self, path):
-        self.statusBar().showMessage( 'Saving project file...' )
-        utils.save_module_configuration( path )
-        self.statusBar().showMessage( 'Project file saved' )
+        self.statusBar().showMessage('Saving project file...')
+        utils.save_module_configuration(path)
+        self.statusBar().showMessage('Project file saved')
 
     def load_configuration_file(self, path):
-        self.statusBar().showMessage( 'Loading configuration file...' )
+        self.statusBar().showMessage('Loading configuration file...')
         utils.load_module_configuration(path)
         self.reset_module_tab_widget(self.tab_widget)
         self.update_module_tab_widget(self.tab_widget)
@@ -151,8 +155,8 @@ class MainWindow(QMainWindow):
                             file_choices))
             if path:
                 self.on_new_project()
-                self.load_project_file( path )
-                self.statusBar().showMessage( 'Opened %s' % path )
+                self.load_project_file(path)
+                self.statusBar().showMessage('Opened %s' % path)
                 return True
 
             return False
@@ -166,7 +170,7 @@ class MainWindow(QMainWindow):
                             file_choices))
             if path:
                 self.load_configuration_file(path)
-                self.statusBar().showMessage( 'Opened configuration file %s' % path )
+                self.statusBar().showMessage('Opened configuration file %s' % path)
                 return True
 
             return False
@@ -178,9 +182,9 @@ class MainWindow(QMainWindow):
                         'Save file', '', 
                         file_choices))
         if path:
-            self.save_project_file( path )
+            self.save_project_file(path)
             self.project_unsaved = False
-            self.statusBar().showMessage( 'Saved to %s' % path )
+            self.statusBar().showMessage('Saved to %s' % path)
             return True
 
         return False
@@ -195,7 +199,7 @@ class MainWindow(QMainWindow):
 
 
     def on_update_progress(self, progress):
-        self.progress_bar.setValue( progress )
+        self.progress_bar.setValue(progress)
 
     def on_start_cancel(self):
 
@@ -204,7 +208,7 @@ class MainWindow(QMainWindow):
         modules = utils.list_modules()
         for module in modules:
 
-            if not utils.all_parameters_set( module ):
+            if not utils.all_parameters_set(module):
 
                 QMessageBox(
                     QMessageBox.Warning,
@@ -212,11 +216,11 @@ class MainWindow(QMainWindow):
                     'Unable to start pipeline',
                     QMessageBox.Ok,
                     self
-                ).exec_()
+               ).exec_()
                 run_pipeline = False
                 break
 
-            elif not utils.all_requirements_met( module ):
+            elif not utils.all_requirements_met(module):
 
                 QMessageBox(
                     QMessageBox.Warning,
@@ -224,7 +228,7 @@ class MainWindow(QMainWindow):
                     'Unable to start pipeline',
                     QMessageBox.Ok,
                     self
-                ).exec_()
+               ).exec_()
                 run_pipeline = False
                 break
 
@@ -232,36 +236,36 @@ class MainWindow(QMainWindow):
 
             if self.__pipeline_running:
 
-                self.start_cancel_button.setText( 'Perform cell selection' )
+                self.start_cancel_button.setText('Perform cell selection')
                 self.pl.stop()
                 self.__pipeline_running = False
 
             else:
 
-                self.start_cancel_button.setText( 'Cancel' )
+                self.start_cancel_button.setText('Cancel')
     
-                self.progress_bar.setRange( 0, 100 )
-                self.progress_bar.setFormat( 'processing input data - %p%' )
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setFormat('processing input data - %p%')
         
                 try:
     
-                    pdc = self.importer.get_pdc()
+                    pdc = importer.Importer().get_pdc()
                     clusterConfiguration = self.clusterConfigurationTab.clusterConfiguration
     
-                    self.pl = pipeline.Pipeline( pdc, clusterConfiguration )
-                    self.pl.connect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
-                    self.pl.connect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
+                    self.pl = pipeline.Pipeline(pdc, clusterConfiguration)
+                    self.pl.connect(self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress)
+                    self.pl.connect(self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished)
                     self.__pipeline_running = True
                     self.__quality_control_done = False
                     self.pl.start_quality_control()
                     #self.pl.start()
-                    #pl.run( self.on_update_progress )
+                    #pl.run(self.on_update_progress)
     
                 except:
         
-                    self.progress_bar.setFormat( 'Idling...' )
+                    self.progress_bar.setFormat('Idling...')
         
-                    self.statusBar().showMessage( 'Unable to start pipeline thread!' )
+                    self.statusBar().showMessage('Unable to start pipeline thread!')
                     raise
 
 
@@ -276,23 +280,23 @@ class MainWindow(QMainWindow):
 
             if self.__quality_control_done:
 
-                self.statusBar().showMessage( 'Showing results window' )
+                self.statusBar().showMessage('Showing results window')
                 print 'creating results window...'
                 channelMapping = self.channelDescriptionTab.channelMapping
                 channelDescription = self.channelDescriptionTab.channelDescription
                 if self.results_window:
                     self.results_window.close()
-                self.results_window = ResultsWindow( self.pl, channelMapping, channelDescription, self.__simple_ui )
+                self.results_window = ResultsWindow(self.pl, channelMapping, channelDescription, self.__simple_ui)
                 self.results_window.show()
 
-                self.progress_bar.setFormat( 'Idling...' )
+                self.progress_bar.setFormat('Idling...')
         
-                self.start_cancel_button.setText( 'Perform cell selection' )
+                self.start_cancel_button.setText('Perform cell selection')
 
                 self.__pipeline_running = False
 
-                self.pl.disconnect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
-                self.pl.disconnect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
+                self.pl.disconnect(self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress)
+                self.pl.disconnect(self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished)
 
                 #del self.pl
 
@@ -303,16 +307,16 @@ class MainWindow(QMainWindow):
 
         else:
 
-            self.statusBar().showMessage( 'Error while running pipeline' )
+            self.statusBar().showMessage('Error while running pipeline')
     
-            self.progress_bar.setFormat( 'Idling...' )
+            self.progress_bar.setFormat('Idling...')
     
-            self.start_cancel_button.setText( 'Perform cell selection' )
+            self.start_cancel_button.setText('Perform cell selection')
 
             self.__pipeline_running = False
 
-            self.pl.disconnect( self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress )
-            self.pl.disconnect( self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished )
+            self.pl.disconnect(self.pl, pipeline.SIGNAL('updateProgress'), self.on_update_progress)
+            self.pl.disconnect(self.pl, pipeline.SIGNAL('finished()'), self.on_pipeline_finished)
 
             #del self.pl
 
@@ -321,7 +325,7 @@ class MainWindow(QMainWindow):
 
         self.project_unsaved = True
 
-        self.update_module_tab_widget( self.tab_widget )
+        self.update_module_tab_widget(self.tab_widget)
 
 
     def on_module_action(self, module, action_name):
@@ -330,19 +334,19 @@ class MainWindow(QMainWindow):
 
         try:
 
-            result = utils.trigger_action( module, action_name )
-            self.statusBar().showMessage( result )
+            result = utils.trigger_action(module, action_name)
+            self.statusBar().showMessage(str(result))
 
-            self.update_module_tab_widget( self.tab_widget )
+            self.update_module_tab_widget(self.tab_widget)
 
         except Exception,e:
             QMessageBox(
                 QMessageBox.Warning,
                 '%s/%s' % (module,action_name),
-                str( e ),
+                str(e),
                 QMessageBox.Ok,
                 self
-            ).exec_()
+           ).exec_()
             raise
 
 
@@ -351,15 +355,15 @@ class MainWindow(QMainWindow):
         tab_widget = QTabWidget()
 
         self.modules_used = []
-        self.update_module_tab_widget( tab_widget )
+        self.update_module_tab_widget(tab_widget)
 
         return tab_widget
 
     def reset_module_tab_widget(self, tab_widget):
 
         while tab_widget.count() > 0:
-            widget = tab_widget.widget( 0 )
-            tab_widget.removeTab( 0 )
+            widget = tab_widget.widget(0)
+            tab_widget.removeTab(0)
             del widget
 
         self.modules_used = []
@@ -371,76 +375,101 @@ class MainWindow(QMainWindow):
         modules = utils.list_modules()
         for module in modules:
 
-            if not utils.all_parameters_set( module ):
+            if not utils.all_parameters_set(module):
                 #print 'Not all required parameters for module %s have been set' % module
                 all_requirements_and_parameters_met = False
+                self.statusBar().showMessage('Not all parameters for module %s have been set' % module)
+                logger.info('Not all parameters for module %s have been set' % module)
                 break
 
-            elif not utils.all_requirements_met( module ):
+            elif not utils.all_requirements_met(module):
                 #print 'Not all requirements for module %s have been fulfilled' % module
                 all_requirements_and_parameters_met = False
+                self.statusBar().showMessage('Not all requirements for module %s have been met' % module)
+                logger.info('Not all requirements for module %s have been met' % module)
                 break
 
-        self.start_cancel_button.setEnabled( all_requirements_and_parameters_met )
-        self.view_images_button.setEnabled( all_requirements_and_parameters_met )
+        if all_requirements_and_parameters_met:
+            self.statusBar().showMessage('Ready')
+
+        self.start_cancel_button.setEnabled(all_requirements_and_parameters_met)
+        self.view_images_button.setEnabled(all_requirements_and_parameters_met)
+
+        reset_tabs = False
+        for module in modules:
+            if utils.is_module_invalid(module):
+                if module in self.modules_used:
+                    reset_tabs = True
+                utils.validate_module(module)
+        if reset_tabs:
+            currentTabIndex = self.tab_widget.currentIndex()
+            currentTabName = self.modules_used[currentTabIndex]
+            self.reset_module_tab_widget(self.tab_widget)
 
         modules = utils.list_modules()
         for module in modules:
 
-            if module not in self.modules_used and utils.all_requirements_met( module ):
+            if module not in self.modules_used and utils.all_requirements_met(module):
 
-                self.modules_used.append( module )
+                params = utils.list_parameters(module)
+                actions = utils.list_actions(module)
+                if len(params) > 0 or len(actions) > 0:    
+                    self.modules_used.append(module)
 
-                params = utils.list_parameters( module )
-                actions = utils.list_actions( module )
-                if len( params ) > 0 or len( actions ) > 0:
                     layout = QVBoxLayout()
 
                     for param in params:
 
-                        param_widget = parameter_widgets.create_widget( module, param, self.importer.get_pdc() )
-                        self.connect( param_widget, SIGNAL('parameterChanged'), self.on_parameter_changed )
+                        param_widget = parameter_widgets.create_widget(module, param, importer.Importer().get_pdc())
+                        self.connect(param_widget, SIGNAL('parameterChanged'), self.on_parameter_changed)
             
-                        layout.addWidget( param_widget )
+                        layout.addWidget(param_widget)
 
                     for action in actions:
 
-                        descr = utils.get_action_descr( module, action )
-                        btn = ActionButton( descr, module, action )
-                        self.connect( btn, SIGNAL('action'), self.on_module_action)
+                        descr = utils.get_action_descr(module, action)
+                        btn = ActionButton(descr, module, action)
+                        self.connect(btn, SIGNAL('action'), self.on_module_action)
 
-                        layout.addWidget( btn )
+                        layout.addWidget(btn)
                 
                     widget = QWidget()
-                    widget.setLayout( layout )
+                    widget.setLayout(layout)
     
                     scrollarea = QScrollArea()
-                    scrollarea.setWidget( widget )
+                    scrollarea.setWidgetResizable(True)
+                    scrollarea.setWidget(widget)
     
-                    tab_widget.addTab( scrollarea, utils.get_module_descr( module ) )
+                    tab_widget.addTab(scrollarea, utils.get_module_descr(module))
 
-        if self.importer.get_pdc() != None:
+        if importer.Importer().get_pdc() != None:
             if self.channelDescriptionTab == None:
-                self.channelDescriptionTab = ChannelDescriptionTab(self.importer.get_pdc())
+                self.channelDescriptionTab = ChannelDescriptionTab(importer.Importer().get_pdc())
             if self.clusterConfigurationTab == None:
-                self.clusterConfigurationTab = ClusterConfigurationTab(self.importer.get_pdc())
+                self.clusterConfigurationTab = ClusterConfigurationTab(importer.Importer().get_pdc())
 
         if self.channelDescriptionTab != None:
             tab_widget.addTab(self.channelDescriptionTab, 'Channels')
         if self.clusterConfigurationTab != None:
             tab_widget.addTab(self.clusterConfigurationTab, 'Clustering configuration')
 
+        if reset_tabs:
+            for i, module in enumerate(self.modules_used):
+                if module == currentTabName:
+                    self.tab_widget.setCurrentIndex(i)
+                    break
+
     def on_view_images(self):
         channelMapping = self.channelDescriptionTab.channelMapping
         channelDescription = self.channelDescriptionTab.channelDescription
-        pdc = self.importer.get_pdc()
+        pdc = importer.Importer().get_pdc()
         if self.pl == None:
             self.pl = pipeline.Pipeline(pdc, self.clusterConfigurationTab.clusterConfiguration)
-        self.image_viewer = GalleryWindow( self.pl, pdc.imgFeatureIds, channelMapping, channelDescription, True )
-        selectionIds = numpy.arange( len( pdc.images ) )
-        pixmapFactory = ImagePixmapFactory( pdc, channelMapping )
-        featureFactory = ImageFeatureTextFactory( pdc )
-        self.image_viewer.on_selection_changed( -1, selectionIds, pixmapFactory, featureFactory )
+        self.image_viewer = GalleryWindow(self.pl, pdc.imgFeatureIds, channelMapping, channelDescription, True)
+        selectionIds = numpy.arange(len(pdc.images))
+        pixmapFactory = ImagePixmapFactory(pdc, channelMapping)
+        featureFactory = ImageFeatureTextFactory(pdc)
+        self.image_viewer.on_selection_changed(-1, selectionIds, pixmapFactory, featureFactory)
         self.image_viewer.show()
 
     def build_main_frame(self):
@@ -448,16 +477,16 @@ class MainWindow(QMainWindow):
         self.main_frame = QWidget()
 
         self.start_cancel_button = QPushButton('Perform cell selection')
-        self.start_cancel_button.setEnabled( False )
-        self.connect( self.start_cancel_button, SIGNAL('clicked()'), self.on_start_cancel )
+        self.start_cancel_button.setEnabled(False)
+        self.connect(self.start_cancel_button, SIGNAL('clicked()'), self.on_start_cancel)
 
         self.view_images_button = QPushButton('View images')
-        self.view_images_button.setEnabled( False )
-        self.connect( self.view_images_button, SIGNAL('clicked()'), self.on_view_images )
+        self.view_images_button.setEnabled(False)
+        self.connect(self.view_images_button, SIGNAL('clicked()'), self.on_view_images)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFormat( 'Idling...' )
-        self.progress_bar.setValue( self.progress_bar.minimum() )
+        self.progress_bar.setFormat('Idling...')
+        self.progress_bar.setValue(self.progress_bar.minimum())
 
         self.tab_widget = self.build_module_tab_widget()
 
@@ -466,20 +495,20 @@ class MainWindow(QMainWindow):
         #
 
         hbox1 = QHBoxLayout()
-        hbox1.addWidget( self.start_cancel_button )
-        hbox1.addWidget( self.progress_bar, 1 )
-        hbox1.addWidget( self.view_images_button )
+        hbox1.addWidget(self.start_cancel_button)
+        hbox1.addWidget(self.progress_bar, 1)
+        hbox1.addWidget(self.view_images_button)
 
         vbox = QVBoxLayout()
-        vbox.addLayout( hbox1 )
+        vbox.addLayout(hbox1)
         if not self.__simple_ui:
-            vbox.addWidget( self.tab_widget, 1 )
+            vbox.addWidget(self.tab_widget, 1)
 
-        self.main_frame.setLayout( vbox )
-        self.setCentralWidget( self.main_frame )
+        self.main_frame.setLayout(vbox)
+        self.setCentralWidget(self.main_frame)
     
     def build_status_bar(self):
-        self.status_text = QLabel( 'Main' )
+        self.status_text = QLabel('Main')
         self.statusBar().addWidget(self.status_text, 1)
         
     def build_menu(self):        
@@ -500,10 +529,10 @@ class MainWindow(QMainWindow):
         quit_action = self.make_action("&Quit", slot=self.on_close, 
             shortcut="Ctrl+Q", tip="Close the application")
 
-        self.add_actions( self.project_menu, 
-            ( new_project_action, open_project_action, save_project_action, None,
-              open_configuration_action, None, quit_action )
-        )
+        self.add_actions(self.project_menu, 
+            (new_project_action, open_project_action, save_project_action, None,
+              open_configuration_action, None, quit_action)
+       )
         
         self.help_menu = self.menuBar().addMenu("&Help")
         about_action = self.make_action("&About", 
@@ -519,7 +548,7 @@ class MainWindow(QMainWindow):
             else:
                 target.addAction(action)
 
-    def make_action(  self, text, slot=None, shortcut=None, 
+    def make_action( self, text, slot=None, shortcut=None, 
                         icon=None, tip=None, checkable=False, 
                         signal="triggered()"):
         action = QAction(text, self)

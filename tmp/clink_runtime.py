@@ -6,13 +6,13 @@ import hcluster
 
 def test_cluster_clink(repeat, runs, dist_m):
 
-    np.random.seed( int( time.time() ) )
+    np.random.seed(int(time.time()))
 
-    clocks = np.empty( ( repeat, runs ) )
-    times = np.empty( ( repeat, runs ) )
+    clocks = np.empty((repeat, runs))
+    times = np.empty((repeat, runs))
 
-    for i in xrange( repeat ):
-        for j in xrange( runs ):
+    for i in xrange(repeat):
+        for j in xrange(runs):
             print 'a'
             t1 = time.time()
             c1 = time.clock()
@@ -22,13 +22,13 @@ def test_cluster_clink(repeat, runs, dist_m):
             print 'b'
             dt = t2 - t1
             dc = c2 - c1
-            clocks[ i, j ] = c2 - c1
-            times[ i, j ] = t2 - t1
+            clocks[i, j] = c2 - c1
+            times[i, j] = t2 - t1
 
-    mean_clock = np.mean( clocks )
-    std_clock = np.std( clocks )
-    mean_time = np.mean( times )
-    std_time = np.std( times )
+    mean_clock = np.mean(clocks)
+    std_clock = np.std(clocks)
+    mean_time = np.mean(times)
+    std_time = np.std(times)
 
     print '5000 objects, 20 features: clocks=%f +- %f, times=%f +- %f' % (mean_clock, std_clock, mean_time, std_time)
 
@@ -41,10 +41,10 @@ def test_cluster_clink(repeat, runs, dist_m):
 #f.close()
 
 import h5py
-f = h5py.File('/g/pepperkok/hepp/dist_matrix_5000_COP.hdf5', mode='r' )
-root = f[ 'dist_matrix' ]
+f = h5py.File('/g/pepperkok/hepp/dist_matrix_5000_COP.hdf5', mode='r')
+root = f['dist_matrix']
 dist_m_dataset = root['dist_m']
-dist_m = np.empty( dist_m_dataset.shape, dtype=np.float32 )
+dist_m = np.empty(dist_m_dataset.shape, dtype=np.float32)
 dist_m_dataset.read_direct(dist_m)
 f.close()
 print 'done'

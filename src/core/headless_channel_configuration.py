@@ -13,15 +13,18 @@ from ..core import parameter_utils as utils
 
 class HeadlessChannelConfiguration:
 
-    __OBJECT_NAME = 'ChannelDescription'
+    #__OBJECT_NAME = 'ChannelDescription'
 
     def __init__(self):
 
         self.channelMapping = {}
         self.channelDescription = {}
 
-        utils.register_object( self.__OBJECT_NAME )
-        utils.register_attribute( self.__OBJECT_NAME, 'channelMappingAndDescription', self.getChannelMappingAndDescription, self.setChannelMappingAndDescription )
+        utils.register_object('ChannelConfiguration', self)
+        utils.register_attribute(
+            self, 'channelMappingAndDescription',
+            self.getChannelMappingAndDescription,
+            self.setChannelMappingAndDescription)
 
     def getChannelMappingAndDescription(self):
         return self.channelDescription, self.channelMapping

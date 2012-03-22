@@ -17,7 +17,7 @@ COP_xticks = [None, [0, 1000, 2000, 3000, 4000]]
 
 def do_stuff(fig, name, axes1, axes2, stats, yticks_cells, yticks_images, flag):
 
-    fig.subplots_adjust( left=0.15 )
+    fig.subplots_adjust(left=0.15)
 
     v = numpy.array([stats['total_cells'], stats['valid_cells'], stats['total_cells'] - stats['valid_cells']])
 
@@ -42,8 +42,8 @@ def do_stuff(fig, name, axes1, axes2, stats, yticks_cells, yticks_images, flag):
 
     axes1.set_ylim(0, 205000)
     axes1.set_xlim(-0.8, len(labels) - 0.2)
-    #axes.set_ylabel( 'Number of cells objects', rotation='90' )
-    axes1.grid( True )
+    #axes.set_ylabel('Number of cells objects', rotation='90')
+    axes1.grid(True)
 
     yloc = None
     for i,rect in enumerate(rects):
@@ -72,14 +72,14 @@ def do_stuff(fig, name, axes1, axes2, stats, yticks_cells, yticks_images, flag):
     #ylabels = axes2.set_yticklabels(labels[::-1], rotation='0')
     #rects = axes2.barh(y[::-1], v, align='center', color=['yellow', 'green', 'red', 'yellow', 'green', 'red'])
 
-    #axes2.set_title( 'Number of images' )
+    #axes2.set_title('Number of images')
 
     ##axes2.legend(loc=0)
 
     #axes2.set_xlim(0, 1.05*numpy.max(v))
     #axes2.set_ylim(-0.8, len(labels) - 0.2)
-    ##axes2.set_ylabel( 'Number of cells objects', rotation='90' )
-    #axes2.grid( True )
+    ##axes2.set_ylabel('Number of cells objects', rotation='90')
+    #axes2.grid(True)
 
     #xloc = None
     #for i,rect in enumerate(rects):

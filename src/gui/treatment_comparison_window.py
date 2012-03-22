@@ -62,9 +62,9 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
         axes.clear()
 
         if 'facecolor' in kwargs:
-            del kwargs[ 'facecolor' ]
-        if not kwargs.has_key( 'alpha' ): kwargs[ 'alpha' ] = 1.0
-        if not kwargs.has_key( 'align' ): kwargs[ 'align' ] = 'center'
+            del kwargs['facecolor']
+        if not kwargs.has_key('alpha'): kwargs['alpha'] = 1.0
+        if not kwargs.has_key('align'): kwargs['align'] = 'center'
 
         axes.set_title('Distance from %s' % labels[trId])
 
@@ -89,7 +89,7 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
             [-0.05 * maxDistance, 1.05 * maxDistance],
             [0,0],
             color='black'
-        )
+       )
         axes.add_artist(main_line)
         #arr = matplotlib.patches.Arrow(
         #    1.0 * maxDistance, 0,
@@ -105,7 +105,7 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
                     [tick, tick],
                     [-0.1, 0],
                     color='black',
-                )
+               )
                 axes.add_artist(l)
                 t = matplotlib.text.Text(
                     tick, -0.15,
@@ -114,7 +114,7 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
                     verticalalignment='center',
                     horizontalalignment='center',
                     transform = axes.transData
-                )
+               )
                 axes.add_artist(t)
 
         for i,distance in enumerate(distances):
@@ -129,7 +129,7 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
                 [0, 0.15],
                 linewidth=2.0,
                 color=color
-            )
+           )
             axes.add_artist(l)
             t = matplotlib.text.Text(
                 distance, +0.2,
@@ -139,78 +139,78 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
                 horizontalalignment='center',
                 transform = axes.transData,
                 rotation=90
-            )
+           )
             axes.add_artist(t)
 
         selfDistance = distances[trId]
         neighbourDistance = numpy.mean(
             [distances[i] for i in itertools.ifilter(
                 lambda j: j != trId and j in trNeighbourIds, xrange(len(distances)))
-            ]
-        )
+           ]
+       )
         otherDistance = numpy.mean(
             [distances[i] for i in itertools.ifilter(
                 lambda j: j != trId and j not in trNeighbourIds, xrange(len(distances)))
-            ]
-        )
+           ]
+       )
         l1 = matplotlib.lines.Line2D(
             [selfDistance, selfDistance],
             [-0.27,-0.31],
             color='blue'
-        )
+       )
         l2 = matplotlib.lines.Line2D(
             [neighbourDistance, neighbourDistance],
             [-0.27,-0.31],
             color='blue'
-        )
+       )
         l3 = matplotlib.lines.Line2D(
             [selfDistance, neighbourDistance],
             [-0.29,-0.29],
             color='blue'
-        )
+       )
         for l in [l1,l2,l3]: axes.add_artist(l)
 
         l1 = matplotlib.lines.Line2D(
             [selfDistance, selfDistance],
             [-0.20,-0.24],
             color='green'
-        )
+       )
         l2 = matplotlib.lines.Line2D(
             [0, 0],
             [-0.20,-0.24],
             color='green'
-        )
+       )
         l3 = matplotlib.lines.Line2D(
             [selfDistance, 0],
             [-0.22,-0.22],
             color='green'
-        )
+       )
         for l in [l1,l2,l3]: axes.add_artist(l)
 
         l1 = matplotlib.lines.Line2D(
             [selfDistance, selfDistance],
             [-0.34,-0.38],
             color='red'
-        )
+       )
         l2 = matplotlib.lines.Line2D(
             [otherDistance, otherDistance],
             [-0.34,-0.38],
             color='red'
-        )
+       )
         l3 = matplotlib.lines.Line2D(
             [selfDistance, otherDistance],
             [-0.36,-0.36],
             color='red'
-        )
+       )
         for l in [l1,l2,l3]: axes.add_artist(l)
 
         #if x_labels != None:
-        #    axes.set_xticks( x )
-        #    x_labels = axes.set_xticklabels( x_labels, rotation='270' )
+        #    axes.set_xticks(x)
+        #    x_labels = axes.set_xticklabels(x_labels, rotation='270')
         #    if bottom_shift != None and fig.subplotpars.bottom < bottom_shift:
-        #        fig.subplots_adjust( bottom=bottom_shift )
+        #        fig.subplots_adjust(bottom=bottom_shift)
 
-            #axes.grid( True )
+            #axes.grid(True)
 
         #return x_labels
 
@@ -235,6 +235,6 @@ class TreatmentComparisonWindow(MultiPagePlotWindow):
                 self.get_plot_window(page).draw_custom(
                     i, plotLabels[id], self.__draw_treatment_comparison,
                     [id, neighbourIds, self.__distanceMatrix[id], labels]
-                )
+               )
 
         #self.page = page

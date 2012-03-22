@@ -227,7 +227,7 @@ cluster_kmeans(PyObject *module, PyObject *args)
                 }
             }
             else {
-                printf("\riteration %ld: swaps = %ld ... ", iterations, swaps );
+                printf("\riteration %ld: swaps = %ld ... ", iterations, swaps);
                 fflush(stdout);
             }
         }

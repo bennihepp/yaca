@@ -17,19 +17,19 @@ import sys
 
 config_file = sys.argv[1]
 
-name = os.path.splitext( os.path.split( config_file )[1] )[0]
+name = os.path.splitext(os.path.split(config_file)[1])[0]
 
 
 import subprocess
 
-PBS_script = PBS_script_template % ( name, name, config_file )
+PBS_script = PBS_script_template % (name, name, config_file)
 
 PBS_script_filename = '/g/pepperkok/hepp/yaca/jobs/yaca_cluster_job_%s' % name
 
-f = open( PBS_script_filename, 'w' )
-f.write( PBS_script )
+f = open(PBS_script_filename, 'w')
+f.write(PBS_script)
 f.close()
 
-p = subprocess.Popen( [ 'ssh', 'sub-master', '/usr/pbs/bin/qsub', '-q', 'clng_new', PBS_script_filename ] )
+p = subprocess.Popen(['ssh', 'sub-master', '/usr/pbs/bin/qsub', '-q', 'clng_new', PBS_script_filename])
 p.wait()
 

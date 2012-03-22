@@ -18,15 +18,15 @@ def do_stuff(fig, axes):
     axes.set_xticks(x)
     xlabels = axes.set_xticklabels(labels, rotation='90')
 
-    #plt.set_title( 'Population of valid cell objects' )
+    #plt.set_title('Population of valid cell objects')
     axes.bar(x - 0.45, total, width=0.8, align='center', color='red', label='Valid cell objects')
     axes.bar(x + 0.45, nonControl, width=0.8, align='center', color='green', label='Non-control-like cell objects')
     
     axes.legend(loc=0)
     
     axes.set_xlim(-1.2, 2*len(labels) - 0.8)
-    axes.set_ylabel( 'Number of cells', rotation='90' )
-    axes.grid( True )
+    axes.set_ylabel('Number of cells', rotation='90')
+    axes.grid(True)
 
 params = {
 #    'axes.labelsize': 10,

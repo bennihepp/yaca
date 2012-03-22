@@ -54,60 +54,60 @@ if __name__ == '__main__':
     debug_suspend = False
 
     j = 1
-    prev_len = len( sys.argv ) + 1
-    while len( sys.argv ) != prev_len:
-        prev_len = len( sys.argv )
+    prev_len = len(sys.argv) + 1
+    while len(sys.argv) != prev_len:
+        prev_len = len(sys.argv)
 
-        for i in xrange( j, len( sys.argv ) ):
+        for i in xrange(j, len(sys.argv)):
             j = i
-            arg = sys.argv[ i ]
+            arg = sys.argv[i]
             #if arg == '':
-            #    del sys.argv[ i ]
+            #    del sys.argv[i]
             #    break
             if arg == '--headless':
                 headless = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
             elif arg == '--interactive':
                 interactive = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
             elif arg == '--batch':
                 batch = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
             elif arg == '--log-file':
-                log_file = sys.argv[ i+1 ]
-                del sys.argv[ i+1 ]
-                del sys.argv[ i ]
+                log_file = sys.argv[i+1]
+                del sys.argv[i+1]
+                del sys.argv[i]
                 break
             elif arg == '--log-id':
-                log_id = sys.argv[ i+1 ]
-                del sys.argv[ i+1 ]
-                del sys.argv[ i ]
+                log_id = sys.argv[i+1]
+                del sys.argv[i+1]
+                del sys.argv[i]
                 break
             elif arg == '--debug':
                 debug = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
             elif arg == '--debug-remote':
                 debug = True
                 debug_remote = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
             elif arg == '--debug-suspend':
                 debug = True
                 debug_suspend = True
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
 
     src.core.debug.set_debugging(debug, debug_remote, debug_suspend)
 
     if batch or headless or interactive:
-        for i in xrange( 1, len( sys.argv ) ):
-            arg = sys.argv[ i ]
+        for i in xrange(1, len(sys.argv)):
+            arg = sys.argv[i]
             if arg == '--no-opengl':
-                del sys.argv[ i ]
+                del sys.argv[i]
                 break
     """
 
@@ -123,7 +123,7 @@ if __name__ == '__main__':
 
         log = None
         #if log_file:
-        #    log = file( log_file, 'w' )
+        #    log = file(log_file, 'w')
 
         try:
             from src import main_batch
@@ -132,16 +132,16 @@ if __name__ == '__main__':
                 import traceback
                 import datetime
                 t = traceback.format_exc()
-                t = t.replace( '\n', '\n  ' )
+                t = t.replace('\n', '\n  ')
                 t = '  ' + t
  
                 dt_now = datetime.datetime.now()
-                error_str = ( 'Error from %s at %s...:\n' % ( log_id, dt_now ) ) + t + '\n'
-                f = open( log_file, 'a' )
-                f.write( error_str )
+                error_str = ('Error from %s at %s...:\n' % (log_id, dt_now)) + t + '\n'
+                f = open(log_file, 'a')
+                f.write(error_str)
                 f.close()
             else:
-                sys.stderr.write( 'No log file specified\n' )
+                sys.stderr.write('No log file specified\n')
             raise
 
     #elif headless:

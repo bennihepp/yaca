@@ -23,36 +23,36 @@ import scipy.linalg
 
 def minkowski_dist(a, b, minkowski_p=2):
 
-    if len( a.shape ) == 1:
-        a = numpy.array( [ a ] )
-    if len( b.shape ) == 1:
-        b = numpy.array( [ b ] )
+    if len(a.shape) == 1:
+        a = numpy.array([a])
+    if len(b.shape) == 1:
+        b = numpy.array([b])
 
     if minkowski_p == 2:
-        return scipy.spatial.distance.cdist( a, b, 'euclidean' )
+        return scipy.spatial.distance.cdist(a, b, 'euclidean')
     elif minkowski_p == 1:
-        return scipy.spatial.distance.cdist( a, b, 'cityblock' )
+        return scipy.spatial.distance.cdist(a, b, 'cityblock')
     else:
-        return scipy.spatial.distance.cdist( a, b, 'minkowski', minkowski_p )
+        return scipy.spatial.distance.cdist(a, b, 'minkowski', minkowski_p)
 
 def weighted_minkowski_dist(a, b, weights, minkowski_p=2):
     wa = weights * a
     wb = weights * b
 
-    return minkowski_dist( wa, wb, minkowski_p )
+    return minkowski_dist(wa, wb, minkowski_p)
 
 def minkowski_cdist(A, B, minkowski_p=2):
     if minkowski_p == 2:
-        return scipy.spatial.distance.cdist( A, B, 'euclidean' )
+        return scipy.spatial.distance.cdist(A, B, 'euclidean')
     elif minkowski_p == 1:
-        return scipy.spatial.distance.cdist( A, B, 'cityblock' )
+        return scipy.spatial.distance.cdist(A, B, 'cityblock')
     else:
-        return scipy.spatial.distance.cdist( A, B, 'minkowski', minkowski_p )
+        return scipy.spatial.distance.cdist(A, B, 'minkowski', minkowski_p)
 
 def weighted_minkowski_cdist(A, B, weights, minkowski_p=2):
     wA = weights * A
     wB = weights * B
-    return minkowski_cdist( wA, wB, minkowski_p )
+    return minkowski_cdist(wA, wB, minkowski_p)
 
 
 # Returns the covariance matrix of the passed observations.
@@ -83,10 +83,10 @@ def inverse_covariance_matrix(observations):
 
     # then try it with LU Decomposition
     try:
-        L,U = scipy.linalg.lu( cov_m, True )
-        inv_L = numpy.linalg.inv( L )
-        inv_U = numpy.linalg.inv( U )
-        return numpy.dot( inv_U, inv_L )
+        L,U = scipy.linalg.lu(cov_m, True)
+        inv_L = numpy.linalg.inv(L)
+        inv_U = numpy.linalg.inv(U)
+        return numpy.dot(inv_U, inv_L)
     except:
         print 'LU decomposition failed. Falling back to standard matrix inversion...'
 
@@ -123,13 +123,13 @@ def inverse_covariance_matrix(observations):
 # and L is the number of dimensions/features
 def mahalanobis_distance(reference_m, test_m, fraction = 0.8):
 
-    ref_ids = numpy.arange( reference_m.shape[0] )
+    ref_ids = numpy.arange(reference_m.shape[0])
 
     if fraction < 1.0:
         dist = mahalanobis_distance(reference_m, reference_m, 1.0)
         ref_ids = numpy.argsort(dist)
         old_number = reference_m.shape[0]
-        number = numpy.round( reference_m.shape[0] * fraction) + 1
+        number = numpy.round(reference_m.shape[0] * fraction) + 1
         ref_ids = ref_ids[:number]
         reference_m = reference_m[ref_ids]
         print 'fraction=%f' % fraction
@@ -161,12 +161,12 @@ def mahalanobis_distance(reference_m, test_m, fraction = 0.8):
 
     """if fraction == 1.0:
         print 'feature weighting:'
-        m = numpy.zeros( inv_cov.shape[0], dtype=float )
-        for i in xrange( m.shape[0] ):
+        m = numpy.zeros(inv_cov.shape[0], dtype=float)
+        for i in xrange(m.shape[0]):
             m[:] = 0.0
             m[i] = 1.0
-            d = numpy.dot( m, inv_cov ) * m
-            d = numpy.sqrt( numpy.sum( d ) )
+            d = numpy.dot(m, inv_cov) * m
+            d = numpy.sqrt(numpy.sum(d))
             print ' %f' % d"""
 
     """if fraction == 1.0:
@@ -186,7 +186,7 @@ def mahalanobis_distance(reference_m, test_m, fraction = 0.8):
 # Returns a MxM matrix.
 def euclidian_distance_between_all_points(points):
 
-    return scipy.spatial.distance.cdist( points, points )
+    return scipy.spatial.distance.cdist(points, points)
 
 
 
@@ -205,7 +205,7 @@ def mahalanobis_distance_between_all_points(reference_m, test_m):
 
     # this matrix will keep all the distances
     # all_dist_m[i,j] = distance between point i and point j
-    all_dist_m = numpy.empty( test_m.shape[0] , test_m.shape[0] )
+    all_dist_m = numpy.empty(test_m.shape[0] , test_m.shape[0])
 
     # compute the actual distances
     for i in xrange(test_m.shape[0]):
@@ -246,29 +246,29 @@ def mahalanobis_distance_between_sets(A_m, B_m, inv_cov, dist_m=None):
 
 
 
-def mahalanobis_transformation( features ):
+def mahalanobis_transformation(features):
 
     # calculate the transformation matrix for the mahalanobis space
     print 'calculating mahalanobis transformation matrix...'
 
-    cov = covariance_matrix( features )
-    eigenvalues, eigenvectors = scipy.linalg.eigh( cov )
-    diag_m = numpy.diag( 1.0 / scipy.sqrt( eigenvalues ) )
-    trans_m = numpy.dot( numpy.dot( eigenvectors , diag_m ) , eigenvectors.transpose() )
+    cov = covariance_matrix(features)
+    eigenvalues, eigenvectors = scipy.linalg.eigh(cov)
+    diag_m = numpy.diag(1.0 / scipy.sqrt(eigenvalues))
+    trans_m = numpy.dot(numpy.dot(eigenvectors , diag_m) , eigenvectors.transpose())
 
     return trans_m
 
 
 
-def transform_features( features, transformation, center=True ):
+def transform_features(features, transformation, center=True):
 
     if center:
-        mean = numpy.mean( features, 0 )
+        mean = numpy.mean(features, 0)
         transformed_features = features - mean
     else:
         transformed_features = features
 
     # transform features according to transformation
-    transformed_features = numpy.dot( transformation , transformed_features.transpose() ).transpose()
+    transformed_features = numpy.dot(transformation , transformed_features.transpose()).transpose()
 
     return transformed_features

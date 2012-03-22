@@ -35,7 +35,7 @@ class RunCheck(unittest.TestCase):
         """testing a single run with 10 points, 2 clusters and 1 feature"""
         points, clusters, partition = self.createEmptyParameterArrays(10, 2, 1)
         points[:5] = np.random.normal(-1.0, 0.5, (5,1))
-        points[5:] = np.random.normal( 1.0, 0.5, (5,1))
+        points[5:] = np.random.normal(1.0, 0.5, (5,1))
         clusters[0,0] = -10.0
         clusters[1,0] = -5.0
         partition[:] = 0

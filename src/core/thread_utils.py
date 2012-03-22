@@ -48,10 +48,10 @@ class AbstractThreadBase(object):
 
         if self.__exception != None:
             #print 'An exception was raised in a running thread:'
-            sys.stderr.write( self.__traceback )
+            sys.stderr.write(self.__traceback)
             sys.stderr.flush()
             #print self.__traceback
-            raise Exception( 'An exception was raised in a running thread:' )
+            raise Exception('An exception was raised in a running thread:')
             #return False
             #raise self.__exception
 
@@ -68,7 +68,7 @@ class AbstractThreadBase(object):
         if self.__thread_method != None:
 
             try:
-                self.__result = self.__thread_method( *self.__thread_args )
+                self.__result = self.__thread_method(*self.__thread_args)
             except Exception,e:
                 if debug.is_debugging():
                     raise
@@ -95,7 +95,7 @@ if 'PyQt4.QtCore' in sys.modules and not debug.is_debugging():
 
         def __init__(self, *args, **kwargs):
             super(Thread, self).__init__(*args, **kwargs)
-            #QThread.__init__( self )
+            #QThread.__init__(self)
             self.mutex = QMutex()
             self.stop_running = False
 
@@ -125,9 +125,9 @@ else:
             self.stop_running = False
 
         def start(self):
-            self.emit( 'started()' )
+            self.emit('started()')
             self.run()
-            self.emit( 'finished()' )
+            self.emit('finished()')
 
         def stop(self):
             self.stop_running = True
@@ -140,8 +140,8 @@ else:
 
         def connect(self, obj, signal, slot):
             if not signal in self.__slots:
-                self.__slots[ signal ] = []
-            self.__slots[ signal ].append( slot )
+                self.__slots[signal] = []
+            self.__slots[signal].append(slot)
 
         def disconnect(self, obj, signal, slot):
             if signal in self.__slots:
@@ -149,6 +149,6 @@ else:
 
         def emit(self, signal, *args):
             if signal in self.__slots:
-                for slot in self.__slots[ signal ]:
-                    slot( *args )
+                for slot in self.__slots[signal]:
+                    slot(*args)
 

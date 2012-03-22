@@ -27,4 +27,5 @@ env.Append(LIBS=['gomp'])
 #PYTHON_LIB='python2.7'
 
 env.SharedLibrary(target='ccluster.so', source='ccluster_ext.c', SHLIBPREFIX='')
+#env.SharedLibrary(target='ccluster_profiles.so', source='ccluster_profiles.c', SHLIBPREFIX='')
 

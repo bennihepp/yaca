@@ -50,15 +50,15 @@ class ICmd(InteractiveSession, cmd.Cmd, Thread):
             #try:
                 #tmp = None
                 #if '_' in self.__local_ns:
-                    #tmp = [ self.__local_ns[ '_' ] ]
+                    #tmp = [self.__local_ns['_']]
                 #if '_' in self.__global_ns:
-                    #tmp = [ self.__global_ns[ '_' ] ]
+                    #tmp = [self.__global_ns['_']]
                 #line2 = '_ = ' + line
                 #exec line2 in self.__global_ns, self.__local_ns
-                #print >> self.__stdout, self.__local_ns[ '_' ]
+                #print >> self.__stdout, self.__local_ns['_']
                 #self.__stdout.flush()
                 #if tmp is not None:
-                    #self.__local_ns[ '_' ] = tmp
+                    #self.__local_ns['_'] = tmp
             #except Exception, e:
                 #exec line in self.__global_ns, self.__local_ns
         #except Exception, e:

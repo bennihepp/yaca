@@ -15,7 +15,7 @@ def plot(fig, axes):
 
     ##fitfunc = lambda p,x: p[2] * (x**2) + p[1] * (x**1) + p[0]
     #fitfunc = lambda p,x: p[1] * (x**1.5) + p[0]
-    #errfunc = lambda p,x,y: fitfunc( p, x ) - y
+    #errfunc = lambda p,x,y: fitfunc(p, x) - y
 
     #p_found, cov_x, infodict, mesg, success = optimize.leastsq(errfunc, [1., 1.], args=(N, times), full_output=True)
     #print p_found

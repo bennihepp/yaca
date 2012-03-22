@@ -29,7 +29,7 @@ skip_next = 0
 
 def print_help():
 
-    sys.stderr.write( """Usage: python %s [options]
+    sys.stderr.write("""Usage: python %s [options]
 Necessary options:
   --project-file <filename>     Load specified pipeline file
 Possible options:
@@ -47,15 +47,15 @@ Possible options:
                                 the default is 20.
   --img-symlinks <path>         Create symlinks of the images within <path>,
                                 the filename will be the image-ID.
-""" % sys.argv[ 0 ] )
+""" % sys.argv[0])
 
 
-if len( sys.argv ) > 1:
-    for i in xrange( 1, len( sys.argv ) ):
+if len(sys.argv) > 1:
+    for i in xrange(1, len(sys.argv)):
 
-        arg = sys.argv[ i ]
-        if i < len( sys.argv ) - 1:
-            next_arg = sys.argv[ i+1 ]
+        arg = sys.argv[i]
+        if i < len(sys.argv) - 1:
+            next_arg = sys.argv[i+1]
         else:
             next_arg = None
 
@@ -70,19 +70,19 @@ if len( sys.argv ) > 1:
             clustering_method = next_arg
             skip_next = 1
         elif arg == '--clustering-index':
-            clustering_index = int( next_arg )
+            clustering_index = int(next_arg)
             skip_next = 1
         elif arg == '--clustering-param1':
-            clustering_param1 = int( next_arg )
+            clustering_param1 = int(next_arg)
             skip_next = 1
         elif arg == '--clustering-param2':
-            clustering_param2 = int( next_arg )
+            clustering_param2 = int(next_arg)
             skip_next = 1
         elif arg == '--clustering-param3':
-            clustering_param3 = int( next_arg )
+            clustering_param3 = int(next_arg)
             skip_next = 1
         elif arg == '--clustering-param4':
-            clustering_param4 = int( next_arg )
+            clustering_param4 = int(next_arg)
             skip_next = 1
         elif arg == '--project-file':
             project_file = next_arg
@@ -99,81 +99,81 @@ if len( sys.argv ) > 1:
             elif control_filter_mode == 'xMEDIAN_AND_LIMIT':
                 filter_mode = pipeline.analyse.FILTER_MODE_xMEDIAN_AND_LIMIT
             else:
-                raise Exception( 'Unknown control filter mode: %s' % control_filter_mode )
+                raise Exception('Unknown control filter mode: %s' % control_filter_mode)
         elif arg == '--help':
             print_help()
-            sys.exit( 0 )
+            sys.exit(0)
         else:
-            sys.stderr.write( 'Unknown option: %s\n' % arg )
+            sys.stderr.write('Unknown option: %s\n' % arg)
             print_help()
-            sys.exit( -1 )
+            sys.exit(-1)
 
 if project_file == None:
     print 'YACA project file needs to be specified...'
     print_help()
-    sys.exit( -1 )
+    sys.exit(-1)
 
 
 
 headlessClusterConfiguration = headless_cluster_configuration.HeadlessClusterConfiguration()
 
 
-utils.load_module_configuration( project_file )
+utils.load_module_configuration(project_file)
 
 
 modules = utils.list_modules()
 for module in modules:
 
-    if not utils.all_parameters_set( module ):
+    if not utils.all_parameters_set(module):
         print 'Not all required parameters for module %s have been set' % module
-        sys.exit( -1 )
+        sys.exit(-1)
 
-    elif not utils.all_requirements_met( module ):
+    elif not utils.all_requirements_met(module):
         print 'Not all requirements for module %s have been fulfilled' % module
-        sys.exit( -1 )
+        sys.exit(-1)
 
 
 pdc = importer.Importer().get_pdc()
 clusterConfiguration = headlessClusterConfiguration.clusterConfiguration
 
 
-pl = pipeline.Pipeline( pdc, clusterConfiguration )
+pl = pipeline.Pipeline(pdc, clusterConfiguration)
 
 
 def callback_pipeline_update_progress(progress):
 
-    sys.stdout.write( '\rprogress: %d %%...' % progress )
+    sys.stdout.write('\rprogress: %d %%...' % progress)
     sys.stdout.flush()
 
 
-pl.connect( pl, SIGNAL('updateProgress'), callback_pipeline_update_progress )
-#pl.connect( pl, SIGNAL('finished()'), callback_pipeline_finished )
+pl.connect(pl, SIGNAL('updateProgress'), callback_pipeline_update_progress)
+#pl.connect(pl, SIGNAL('finished()'), callback_pipeline_finished)
 
 print '\nRunning quality control...'
 pl.start_quality_control()
 
 pl.wait()
 
-sys.stdout.write( '\n' )
+sys.stdout.write('\n')
 sys.stdout.flush()
 
 print '\nRunning pre filtering...'
-pl.start_pre_filtering( filter_mode )
+pl.start_pre_filtering(filter_mode)
 
 pl.wait()
 
-sys.stdout.write( '\n' )
+sys.stdout.write('\n')
 sys.stdout.flush()
 
-pl.disconnect( pl, SIGNAL('updateProgress'), callback_pipeline_update_progress )
-#pl.disconnect( pl, SIGNAL('finished()'), callback_pipeline_finished )
+pl.disconnect(pl, SIGNAL('updateProgress'), callback_pipeline_update_progress)
+#pl.disconnect(pl, SIGNAL('finished()'), callback_pipeline_finished)
 
 
-#pl.connect( pl, SIGNAL('finished()'), callback_pipeline_finished )
+#pl.connect(pl, SIGNAL('finished()'), callback_pipeline_finished)
 
 print '\nRunning clustering...'
-pl.start_clustering( clustering_method, clustering_index, clustering_param1, clustering_param2, clustering_param3, clustering_param4 )
+pl.start_clustering(clustering_method, clustering_index, clustering_param1, clustering_param2, clustering_param3, clustering_param4)
 
 pl.wait()
 
-#pl.disconnect( pl, SIGNAL('finished()'), callback_pipeline_finished )
+#pl.disconnect(pl, SIGNAL('finished()'), callback_pipeline_finished)

@@ -17,15 +17,15 @@ def test_cluster_kmeans(repeat, runs, data, k):
 
     global log_file
 
-    np.random.seed( int( time.time() ) )
+    np.random.seed(int(time.time()))
 
     from core import cluster
 
-    clocks = np.empty( ( repeat, runs ) )
-    times = np.empty( ( repeat, runs ) )
+    clocks = np.empty((repeat, runs))
+    times = np.empty((repeat, runs))
 
-    for i in xrange( repeat ):
-        for j in xrange( runs ):
+    for i in xrange(repeat):
+        for j in xrange(runs):
             t1 = time.time()
             c1 = time.clock()
             cluster.cluster_kmeans(data, k)
@@ -33,13 +33,13 @@ def test_cluster_kmeans(repeat, runs, data, k):
             t2 = time.time()
             dt = t2 - t1
             dc = c2 - c1
-            clocks[ i, j ] = c2 - c1
-            times[ i, j ] = t2 - t1
+            clocks[i, j] = c2 - c1
+            times[i, j] = t2 - t1
 
-    mean_clock = np.mean( clocks )
-    std_clock = np.std( clocks )
-    mean_time = np.mean( times )
-    std_time = np.std( times )
+    mean_clock = np.mean(clocks)
+    std_clock = np.std(clocks)
+    mean_time = np.mean(times)
+    std_time = np.std(times)
 
     print '%d objects, %d features, %d clusters: clocks=%f +- %f, times=%f +- %f' % (data.shape[0], data.shape[1], k, mean_clock, std_clock, mean_time, std_time)
     if log_file is not None:

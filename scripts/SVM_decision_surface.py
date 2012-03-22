@@ -101,7 +101,7 @@ def plot_decision_surface(axes, clf, X, Y):
     import matplotlib.pylab as pylab
     import numpy as np
     # step size in the mesh
-    h = (np.max(X, axis=0) - np.min(X, axis=0) ) / 100.0
+    h = (np.max(X, axis=0) - np.min(X, axis=0)) / 100.0
     # create a mesh to plot in
     x_min = np.min(X, axis=0) - 1
     x_max = np.max(X, axis=0) + 1

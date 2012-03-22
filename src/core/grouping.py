@@ -63,11 +63,11 @@ default_get_treatment_replicate_groups_src = \
 # define necessary parameters for this module (see parameter_utils.py for details)
 #
 #
-__dict__ = sys.modules[ __name__ ].__dict__
+__dict__ = sys.modules[__name__].__dict__
 #
-utils.register_module( __name__, 'Grouping of cell objects', __dict__ )
+utils.register_module(__name__, 'Grouping of cell objects', __dict__)
 #
-utils.add_required_state( __name__, importer.__name__, 'imported' )
+utils.add_required_state(__name__, importer.__name__, 'imported')
 #
 utils.register_parameter(__name__, 'custom_get_treatment_groups_src', utils.PARAM_LONGSTR, 'Function defining the grouping of cell objects by treatment', param_default=default_get_treatment_groups_src)
 #
@@ -119,7 +119,7 @@ def update_custom_get_groups_functions():
         if custom_get_groups_dict_src[group_description].strip():
             custom_get_groups_dict[group_description] = compile_get_groups_function(
                 custom_get_groups_dict_src[group_description]
-            )
+           )
 
 def get_available_group_descriptions():
     update_custom_get_groups_functions()
