@@ -33,7 +33,7 @@ import distance
 import quality_control
 import cluster
 import cluster_profiles
-import ext.ccluster_profiles_mp as ccluster_profiles
+import ext.ccluster_profiles_mp_zmq as ccluster_profiles
 import grouping
 
 

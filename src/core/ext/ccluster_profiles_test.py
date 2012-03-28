@@ -5,13 +5,13 @@ import numpy as np
 class ImportCheck(unittest.TestCase):
     def testImport(self):
         """importing ccluster c-extension"""
-        import ext.ccluster_profiles_mp
+        import ext.ccluster_profiles_mp_amqp
 
 class RunCheck(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         global ccluster_profiles
-        import ext.ccluster_profiles_mp as ccluster_profiles
+        import ext.ccluster_profiles_mp_zmq as ccluster_profiles
         global cluster_profiles
         import cluster_profiles
 
@@ -21,7 +21,7 @@ class RunCheck(unittest.TestCase):
 
     def testSimpleRun(self):
         """testing a single run with 100x50 matrices"""
-        points = points = self.createRandomArray(100, 50)
+        points = points = self.createRandomArray(10, 50)
 
         m1 = ccluster_profiles.compute_treatment_distance_map(points)
         m2 = cluster_profiles.compute_treatment_distance_map(
@@ -31,7 +31,7 @@ class RunCheck(unittest.TestCase):
 
     def testComplexRun(self):
         """testing a single run with 1000x500 matrices"""
-        points = points = self.createRandomArray(1000, 50)
+        points = points = self.createRandomArray(100, 50)
 
         m1 = ccluster_profiles.compute_treatment_distance_map(points)
         m2 = ccluster_profiles.compute_treatment_distance_map(points)

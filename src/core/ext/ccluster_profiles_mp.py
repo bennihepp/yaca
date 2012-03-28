@@ -36,7 +36,7 @@ def compute_treatment_distance_map(
 
     print 'spawning processes...'
     chunk_size = int(math.ceil(clusterProfiles.shape[0] / float(num_of_processes)))
-    manager = multiprocessing.Manager()
+    #manager = multiprocessing.Manager()
     #pool = multiprocessing.Pool(num_of_processes)
     #queue = manager.Queue()
     queue = multiprocessing.Queue()

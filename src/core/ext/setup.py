@@ -12,6 +12,11 @@ profile_ext_module = Extension('ccluster_profiles',
 
 profile_mp_worker_ext_module = Extension('ccluster_profiles_mp_worker',
                    sources=['ccluster_profiles_mp_worker.pyx'])
+profile_mp_worker_zmq_ext_module = Extension('ccluster_profiles_mp_worker_zmq',
+                   sources=['ccluster_profiles_mp_worker_zmq.pyx'])
+profile_mp_worker_amqp_ext_module \
+    = Extension('ccluster_profiles_mp_worker_amqp',
+                sources=['ccluster_profiles_mp_worker_amqp.pyx'])
 
 setup(name='ccluster',
       version='1.0',
@@ -19,5 +24,7 @@ setup(name='ccluster',
         ='An extension implementing k-means and fast cluster profiling',
       cmdclass={'build_ext': build_ext},
       ext_modules=[profile_ext_module,
-                   profile_mp_worker_ext_module])
+                   profile_mp_worker_ext_module,
+                   profile_mp_worker_zmq_ext_module,
+                   profile_mp_worker_amqp_ext_module])
 

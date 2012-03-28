@@ -18,6 +18,8 @@ See the documentation for further details.
 import sys
 import numpy
 
+import quality_control_mp
+
 QUALITY_CONTROL_DEFAULT = 0
 QUALITY_CONTROL_VALID = 1
 
@@ -83,6 +85,8 @@ utils.register_parameter(__name__, 'maxCyToNucAreaFrac', utils.PARAM_FLOAT, 'Max
 
 utils.register_parameter(__name__, 'minCells', utils.PARAM_INT, 'Minimum number of cells per image', 1, 1, None)
 utils.register_parameter(__name__, 'maxCells', utils.PARAM_INT, 'Maximum number of cells per image', 300, 1, None)
+
+utils.register_parameter(__name__, 'numOfProcesses', utils.PARAM_INT, 'Number of parallel processes', 10, 1, None)
 
 
 # quality control of the data
@@ -189,54 +193,62 @@ def quality_control(pdc):
     qualityControlFeature[validCellMask] = QUALITY_CONTROL_VALID
     pdc.objFeatures[: , pdc.objQualityControlFeatureId] = qualityControlFeature
 
-    d = {}
+    if numOfProcesses > 1:
+        d, validImageMask, validCellMask \
+            = quality_control_mp.quality_control_images(
+                pdc, validImageMask, validCellMask,
+                nprocesses=numOfProcesses)
 
-    #print 'checking %d images' % len(pdc.images)
+    else:
 
-    for image in pdc.images:
+        d = {}
 
-        sys.stdout.write('\rchecking {} of {} images'.format(
-            image.index + 1, len(pdc.images)))
-        sys.stdout.flush()
+        #print 'checking %d images' % len(pdc.images)
 
-        imgCellMask = pdc.objFeatures[: , pdc.objImageFeatureId] == image.index
+        for image in pdc.images:
 
-        if image.state != 'ok':
-            pass
+            sys.stdout.write('\rchecking {} of {} images'.format(
+                image.index + 1, len(pdc.images)))
+            sys.stdout.flush()
 
-        # minimum number of cells
-        elif validCellMask[imgCellMask].sum() < minCells:
-            image.state = 'not_enough_ok_cells'
-            if pdc.imgQualityControlFeatureId >= 0:
-                pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_NOT_ENOUGH_VALID_CELLS
+            imgCellMask = pdc.objFeatures[: , pdc.objImageFeatureId] == image.index
 
-        # maximum number of cells
-        elif validCellMask[imgCellMask].sum() > maxCells:
-            #print 'too_many_cells'
-            image.state = 'too_many_cells'
-            if pdc.imgQualityControlFeatureId >= 0:
-                pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_TOO_MANY_CELLS
+            if image.state != 'ok':
+                pass
 
-        else:
-            # minimal number of background pixels
-            cellFeatureId = pdc.objFeatureIds[cellArea]
-            areaOccupiedByCells = sum(pdc.objFeatures[imgCellMask , cellFeatureId])
-            if (imageWidth * imageHeight - areaOccupiedByCells < minAreaBg):
-                #print 'not_enough_bg_Pixels for image(%d): %s' % (image.index,image.name)
-                image.state = 'not_enough_bg_pixels'
+            # minimum number of cells
+            elif validCellMask[imgCellMask].sum() < minCells:
+                image.state = 'not_enough_ok_cells'
                 if pdc.imgQualityControlFeatureId >= 0:
-                    pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_NOT_ENOUGH_BG_PIXELS
+                    pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_NOT_ENOUGH_VALID_CELLS
 
-        if image.state != 'ok':
-            if not d.has_key(image.state):
-                d[image.state] = [0, 0]
-            d[image.state][0] += 1
-            d[image.state][1] += numpy.sum(numpy.logical_and(validCellMask, imgCellMask))
-            validImageMask[image.index] = False
-            validCellMask[imgCellMask] = False
+            # maximum number of cells
+            elif validCellMask[imgCellMask].sum() > maxCells:
+                #print 'too_many_cells'
+                image.state = 'too_many_cells'
+                if pdc.imgQualityControlFeatureId >= 0:
+                    pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_TOO_MANY_CELLS
 
-    sys.stdout.write('\n')
-    sys.stdout.flush()
+            else:
+                # minimal number of background pixels
+                cellFeatureId = pdc.objFeatureIds[cellArea]
+                areaOccupiedByCells = sum(pdc.objFeatures[imgCellMask , cellFeatureId])
+                if (imageWidth * imageHeight - areaOccupiedByCells < minAreaBg):
+                    #print 'not_enough_bg_Pixels for image(%d): %s' % (image.index,image.name)
+                    image.state = 'not_enough_bg_pixels'
+                    if pdc.imgQualityControlFeatureId >= 0:
+                        pdc.imgFeatures[image.index, pdc.imgQualityControlFeatureId] = QUALITY_CONTROL_NOT_ENOUGH_BG_PIXELS
+
+            if image.state != 'ok':
+                if not d.has_key(image.state):
+                    d[image.state] = [0, 0]
+                d[image.state][0] += 1
+                d[image.state][1] += numpy.sum(numpy.logical_and(validCellMask, imgCellMask))
+                validImageMask[image.index] = False
+                validCellMask[imgCellMask] = False
+
+        sys.stdout.write('\n')
+        sys.stdout.flush()
 
     for k,v in d.iteritems():
         v1,v2 = v
