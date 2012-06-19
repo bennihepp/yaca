@@ -7,4 +7,5 @@ pyqt4 (+qt4)
 (qtopengl + pyqtopengl + pyopengl)
 pyyaml (+libyaml)
 h5py (+libhdf5)
+zeromq or rabbitmq for ccluster_profiles (parallel computation of cluster profiles)
 

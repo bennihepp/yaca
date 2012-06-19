@@ -20,9 +20,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Yaca. Yet another cell analyser.')
     parser.add_argument('-b', '--headless', dest='mode', action='store_const',
                         const='headless', help='Run in headless mode')
-    parser.add_argument('-i', '--interactive', dest='mode', action='store_const',
-                        const='interactive', default='interactive',
-                        help='Run in interactive mode (default)')
     parser.add_argument('--log-file', help='Log file.')
     parser.add_argument('--log-id', help='ID for the log file.')
     parser.add_argument('-d', '--debug', dest='debug_mode', action='append_const',
@@ -46,7 +43,6 @@ if __name__ == '__main__':
     """
     headless = False
     batch = False
-    interactive = False
     log_file = None
     log_id = 'yaca'
     debug = False
@@ -66,10 +62,6 @@ if __name__ == '__main__':
             #    break
             if arg == '--headless':
                 headless = True
-                del sys.argv[i]
-                break
-            elif arg == '--interactive':
-                interactive = True
                 del sys.argv[i]
                 break
             elif arg == '--batch':
@@ -103,7 +95,7 @@ if __name__ == '__main__':
 
     src.core.debug.set_debugging(debug, debug_remote, debug_suspend)
 
-    if batch or headless or interactive:
+    if batch or headless:
         for i in xrange(1, len(sys.argv)):
             arg = sys.argv[i]
             if arg == '--no-opengl':
@@ -143,24 +135,6 @@ if __name__ == '__main__':
             else:
                 sys.stderr.write('No log file specified\n')
             raise
-
-    #elif headless:
-
-        #from src import main_headless
-
-        #main_headless.run(args)
-
-    #elif interactive:
-
-        #from src import main_interactive
-
-        #main_interactive.run(args)
-
-    #else:
-
-        #from src import main_gui
-
-        #main_gui.run(args)
 
     if args.mode == 'headless':
 
